@@ -42,6 +42,14 @@ Mesuré avec [`eufy-ingest/measure_p0.py`](eufy-ingest/measure_p0.py) sur une S3
 H.265 → H.264** (et **downscaler** le 4K vers 720p/1080p — souhaitable pour une visio) avant LiveKit.
 Coût : CPU + ~100-300 ms (L13). La détection de codec du shim (`metadata.videoCodec`) gère H264/H265.
 
+**Qualité réglable mais codec invariant (testé) :** `videoStreamingQuality` est modifiable
+(`0=Auto, 1=720P, 2=1080P, 3=2K, 4=4K`), MAIS le codec reste **H.265 à TOUS les niveaux**
+(720P/1080P/4K vérifiés sur la vraie caméra). Baisser la qualité change la **résolution**, pas le
+**codec** → le transcodage H.265→H.264 reste nécessaire pour WebRTC. **En revanche**, régler la
+caméra sur **720P** rend ce transcodage **trivial** (faible CPU, faible latence, faible bande
+passante — idéal pour une visio TV) : le souci de transcodage 4K (L13) **disparaît**. Réglage
+recommandé pour l'appel : `videoStreamingQuality=1` (720P) + transcodage léger H.265→H.264.
+
 Reste à mesurer : latence **steady-state** sens sortant (L3 — glass-to-glass en filmant une horloge)
 et **durée max** de session (L1 — test long). L'instance `eufy-visio` est dédiée (trusted device
 distinct) et indépendante de toute autre intégration utilisant la même caméra.
