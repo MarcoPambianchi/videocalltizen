@@ -1,0 +1,11 @@
+{
+  "name": "visio-media-check",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "P2 — client headless qui s'abonne et verifie la reception reelle de media via le SFU",
+  "dependencies": {
+    "@livekit/rtc-node": "^0.13.11",
+    "livekit-server-sdk": "^2.9.0"
+  }
+}

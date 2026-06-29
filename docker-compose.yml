@@ -1,0 +1,151 @@
+name: visio
+
+x-restart: &restart
+  restart: unless-stopped
+
+networks:
+  visio:
+    name: visio
+
+services:
+  # ── Backend partagé LiveKit + Ingress ──────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    <<: *restart
+    networks: [visio]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ── C5 — Serveur SFU LiveKit ────────────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:v1.9.12
+    <<: *restart
+    networks: [visio]
+    environment:
+      # Clé/secret API depuis .env — JAMAIS en clair dans un fichier suivi.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50019:50000-50019/udp"
+
+  # ── C4 — LiveKit Ingress (RTMP + WHIP) ──────────────────────────────────────
+  ingress:
+    image: livekit/ingress:v1.5.0
+    <<: *restart
+    networks: [visio]
+    depends_on:
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    environment:
+      # Config injectée ici ; api_key/api_secret viennent de .env (pas de fichier suivi).
+      INGRESS_CONFIG_BODY: |
+        log_level: info
+        api_key: "${LIVEKIT_API_KEY}"
+        api_secret: "${LIVEKIT_API_SECRET}"
+        ws_url: ws://livekit:7880
+        redis:
+          address: redis:6379
+        rtmp_port: 1935
+        whip_port: 8085
+        http_relay_port: 9092
+        rtc:
+          port_range_start: 7885
+          port_range_end: 7895
+          use_external_ip: false
+          enable_loopback_candidate: true
+    ports:
+      - "1935:1935"
+      - "8085:8085"
+      - "7885-7895:7885-7895/udp"
+
+  # ── C3 — go2rtc (adaptation média + source synthétique) ─────────────────────
+  go2rtc:
+    image: alexxit/go2rtc:1.9.14
+    <<: *restart
+    networks: [visio]
+    volumes:
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+    ports:
+      - "1984:1984"
+      - "8554:8554"
+      - "8555:8555"
+      - "8555:8555/udp"
+
+  # ── C6 — Service de jeton + admin LiveKit ───────────────────────────────────
+  token-service:
+    build: ./token-service
+    <<: *restart
+    networks: [visio]
+    env_file: .env
+    depends_on:
+      livekit:
+        condition: service_started
+    ports:
+      - "9080:9080"
+
+  # ── C7 — Service de signalisation d'appel ───────────────────────────────────
+  signaling:
+    build: ./signaling
+    <<: *restart
+    networks: [visio]
+    env_file: .env
+    environment:
+      TOKEN_SERVICE_URL: http://token-service:9080
+    depends_on:
+      token-service:
+        condition: service_started
+    ports:
+      - "9090:9090"
+
+  # ── C8 — Client web interlocuteur ───────────────────────────────────────────
+  web-client:
+    build: ./web-client
+    <<: *restart
+    networks: [visio]
+    ports:
+      - "9088:80"
+
+  # ── C5 — TURN (PROD uniquement) ─────────────────────────────────────────────
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    profiles: ["turn"]
+    network_mode: host
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  # ── C1 — Ingestion Eufy DÉDIÉE (profil 'eufy' — touche la vraie caméra) ──────
+  # ATTENTION : démarrer ce service ouvre une session sur le compte Eufy réel et
+  # peut entrer en concurrence avec le Gardien pour l'unique slot P2P de la S350.
+  eufy-visio:
+    image: eufy-security-ws:hb2hb3
+    profiles: ["eufy"]
+    network_mode: host
+    environment:
+      USERNAME: ${EUFY_USERNAME}
+      PASSWORD: ${EUFY_PASSWORD}
+      COUNTRY: ${EUFY_COUNTRY:-CH}
+      PORT: ${EUFY_WS_PORT:-3010}
+      TRUSTED_DEVICE_NAME: ${EUFY_TRUSTED_DEVICE_NAME:-eufy-visio}
+
+  # ── C2 — Shim P2P Eufy → go2rtc (profil 'eufy') ─────────────────────────────
+  eufy-shim:
+    build: ./eufy-ingest
+    profiles: ["eufy"]
+    network_mode: host
+    env_file: .env
+    depends_on:
+      - eufy-visio

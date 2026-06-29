@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/AlexxIT/go2rtc/master/www/schema.json
+#
+# go2rtc — C3. Adaptation média.
+#  - En DEV : source synthétique A/V (h264 + aac) générée par ffmpeg lavfi, réinjectée en RTSP.
+#  - En PROD : remplacer la source 'salon' par le flux poussé par le shim Eufy (eufy-ingest).
+#
+# La 2e source ajoute une piste audio OPUS (compat WebRTC/WHIP) sans ré-encoder la vidéo (passthrough).
+
+streams:
+  salon:
+    # Source synthétique : mire animée (testsrc2) + tonalité 440 Hz. H.264 High@4.2, GOP 50, sans B-frames.
+    - "exec:ffmpeg -hide_banner -loglevel error -re -f lavfi -i testsrc2=size=1280x720:rate=25 -f lavfi -i sine=frequency=440:sample_rate=48000 -c:v libx264 -profile:v high -level 4.2 -preset veryfast -tune zerolatency -bf 0 -g 50 -pix_fmt yuv420p -c:a aac -b:a 128k -ar 48000 -ac 1 -rtsp_transport tcp -f rtsp {output}"
+    # Piste audio OPUS dérivée (vidéo copiée) pour les consommateurs WebRTC.
+    - "ffmpeg:salon#audio=opus"
+
+api:
+  listen: ":1984"
+  origin: "*"          # CORS — requis pour le contrôle depuis token-service / scripts
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  listen: ":8555"
+  candidates:
+    - 127.0.0.1:8555   # candidat local (dev) ; en prod : IP publique ou stun:8555
+
+log:
+  level: info
+  format: text

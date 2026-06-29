@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Visio — Appel</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Client LiveKit (UMD) : expose window.LivekitClient -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+  <!-- Barre d'état : connexion + qualité réseau -->
+  <header id="topbar">
+    <span id="status" class="status status--idle">Hors ligne</span>
+    <span id="quality" class="quality" title="Qualité de connexion">●</span>
+    <span id="roomName" class="room"></span>
+  </header>
+
+  <!-- Écran d'accueil : saisie d'un nom ou d'un lien si aucun token en query -->
+  <section id="join" class="join hidden">
+    <div class="join__card">
+      <h1>Rejoindre l'appel</h1>
+      <p class="join__hint">
+        Entrez votre nom pour générer un lien d'invitation, ou collez un lien reçu.
+      </p>
+
+      <label for="nameInput">Votre nom</label>
+      <input id="nameInput" type="text" placeholder="ex : Marco" autocomplete="name" />
+      <button id="getInviteBtn" type="button">Obtenir un lien et rejoindre</button>
+
+      <div class="join__sep">ou</div>
+
+      <label for="linkInput">Lien / token reçu</label>
+      <input id="linkInput" type="text" placeholder="https://… ?token=…&url=…  ou simplement le token" />
+      <button id="useLinkBtn" type="button" class="secondary">Rejoindre avec ce lien</button>
+
+      <p id="joinError" class="join__error hidden"></p>
+    </div>
+  </section>
+
+  <!-- Écran d'appel : grande vidéo distante + preview locale -->
+  <section id="call" class="call hidden">
+    <div class="stage">
+      <!-- Vidéo distante (caméra-salon) -->
+      <div id="remoteWrap" class="remote">
+        <div id="remotePlaceholder" class="placeholder">En attente de la caméra…</div>
+        <!-- les éléments <video>/<audio> distants sont injectés ici -->
+      </div>
+      <!-- Preview locale (petite, coin) -->
+      <div id="localWrap" class="local">
+        <!-- l'élément <video> local est injecté ici -->
+      </div>
+    </div>
+
+    <!-- Barre de contrôle -->
+    <div class="controls">
+      <button id="micBtn" type="button" title="Couper / activer le micro">🎤 Micro</button>
+      <button id="camBtn" type="button" title="Couper / activer la caméra">📷 Caméra</button>
+      <button id="inviteBtn" type="button" class="secondary" title="Inviter quelqu'un (rejoint la salle sans faire sonner)">➕ Inviter</button>
+      <button id="hangupBtn" type="button" class="danger" title="Raccrocher">⛔ Raccrocher</button>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

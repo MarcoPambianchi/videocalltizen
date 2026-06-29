@@ -1,0 +1,198 @@
+/* C8 — Styles du client web interlocuteur. UI simple, sombre, robuste. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0e0f12;
+  color: #e8e8ea;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.hidden { display: none !important; }
+
+/* ── Barre d'état ───────────────────────────────────────────────────────────── */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #16181d;
+  border-bottom: 1px solid #23262d;
+  font-size: 14px;
+}
+
+.status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.status--idle       { background: #2a2d34; color: #b9bcc4; }
+.status--connecting { background: #4a3c12; color: #f5c451; }
+.status--connected  { background: #14401f; color: #37d67a; }
+.status--error      { background: #401414; color: #e84a4a; }
+
+.quality { font-size: 16px; }
+.room { margin-left: auto; color: #9aa0ab; font-size: 13px; }
+
+/* ── Écran d'accueil ────────────────────────────────────────────────────────── */
+.join {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 40px);
+  padding: 16px;
+}
+.join__card {
+  width: 100%;
+  max-width: 380px;
+  background: #16181d;
+  border: 1px solid #23262d;
+  border-radius: 14px;
+  padding: 24px;
+}
+.join__card h1 { margin: 0 0 6px; font-size: 20px; }
+.join__hint { margin: 0 0 18px; color: #9aa0ab; font-size: 13px; }
+.join label {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: #c4c8d0;
+}
+.join input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #2c2f37;
+  background: #0e0f12;
+  color: #e8e8ea;
+  font-size: 14px;
+}
+.join button {
+  width: 100%;
+  margin-top: 12px;
+}
+.join__sep {
+  text-align: center;
+  margin: 18px 0 4px;
+  color: #6b7079;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.join__error {
+  margin-top: 14px;
+  color: #e84a4a;
+  font-size: 13px;
+}
+
+/* ── Boutons ────────────────────────────────────────────────────────────────── */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #2f6df6;
+  color: #fff;
+  transition: filter .15s, background .15s;
+}
+button:hover { filter: brightness(1.1); }
+button:disabled { opacity: .5; cursor: default; }
+button.secondary { background: #3a3f49; }
+button.danger { background: #e84a4a; }
+button.off { background: #5a3c12; color: #f5c451; }
+
+/* ── Écran d'appel ──────────────────────────────────────────────────────────── */
+.call {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 40px);
+}
+.stage {
+  position: relative;
+  flex: 1;
+  background: #000;
+  overflow: hidden;
+}
+
+/* Distants : mosaïque adaptative (un flux par participant — multipartite) */
+.remote {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-auto-rows: 1fr;
+  background: #000;
+}
+.remote .video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  min-height: 0;
+}
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7079;
+  font-size: 15px;
+}
+.hidden-audio { display: none; }
+
+/* Avertissement non bloquant */
+.warn {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #4a3c12;
+  color: #f5c451;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 5;
+}
+
+/* Preview locale (petite, coin bas-droit) */
+.local {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 26%;
+  max-width: 220px;
+  min-width: 120px;
+  aspect-ratio: 4 / 3;
+  border: 2px solid #2f6df6;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #16181d;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  z-index: 4;
+}
+.local .video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* effet miroir naturel pour la preview locale */
+}
+
+/* Barre de contrôle */
+.controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 12px;
+  background: #16181d;
+  border-top: 1px solid #23262d;
+}
+
+@media (max-width: 480px) {
+  .local { width: 36%; }
+  .controls button { flex: 1; padding: 12px 8px; }
+}

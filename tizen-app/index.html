@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Visio TV — Réception</title>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+  <!-- Grille des participants distants (split-screen MULTIPARTITE). Une tuile
+       vidéo par participant ; layout adaptatif au nombre de participants. -->
+  <div id="grid" class="grid"></div>
+
+  <!-- Pool d'éléments audio distants (un par participant, joués sur les HP TV). -->
+  <div id="audioPool" style="display:none"></div>
+
+  <!-- Écran de VEILLE (toujours affiché au repos) : vidéo ambiante en boucle +
+       message. Remplacé par l'appel au décrochage ; repris à la même position
+       en fin d'appel. -->
+  <div id="standby" class="standby">
+    <video id="standbyVideo" class="standby-video" loop muted autoplay playsinline></video>
+    <div id="standbyMessage" class="standby-message">Téléviseur — en veille</div>
+  </div>
+
+  <!-- Bandeau d'état (coin) : connexion signaling / room. -->
+  <div id="status" class="status">Connexion au service d'appel…</div>
+
+  <!-- Overlay "appel entrant" (mode manuel). Caché par défaut. -->
+  <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+    <div class="overlay-card">
+      <div class="overlay-title">Appel entrant</div>
+      <div id="overlay-caller" class="overlay-caller">Appel de —</div>
+      <div class="overlay-actions">
+        <button id="btn-answer" class="btn btn-answer" autofocus>OK — Décrocher</button>
+        <button id="btn-reject" class="btn btn-reject">BACK — Refuser</button>
+      </div>
+      <div class="overlay-hint">Télécommande : OK pour décrocher, BACK pour refuser</div>
+    </div>
+  </div>
+
+  <!-- Overlay d'aide en appel : rappel touche raccrocher. -->
+  <div id="incall-hint" class="incall-hint hidden">BACK pour raccrocher</div>
+
+  <!-- livekit-client en UMD (global window.LivekitClient). -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <script src="js/remote.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

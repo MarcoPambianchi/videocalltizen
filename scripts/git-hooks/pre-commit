@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Garde-fou anti-fuite de secrets. Installé via scripts/setup.sh
+# (git config core.hooksPath scripts/git-hooks).
+set -u
+
+# 1) Refuser tout fichier .env (sauf .env.example) en staging.
+blocked=$(git diff --cached --name-only | grep -E '(^|/)\.env(\.[^/]*)?$' | grep -vE '\.env\.example$' || true)
+if [ -n "$blocked" ]; then
+  echo "✖ pre-commit : fichier de secrets en staging :"
+  echo "$blocked" | sed 's/^/    /'
+  echo "  Retire-le : git restore --staged <fichier>"
+  exit 1
+fi
+
+# 2) Scanner le diff staged pour des secrets évidents.
+#    (on exclut les outils qui contiennent légitimement ces motifs de détection)
+if git diff --cached -U0 -- . ':(exclude).env.example' ':(exclude)scripts/git-hooks/*' ':(exclude)scripts/gen-keys.sh' \
+   | grep -nE "BEGIN (RSA|OPENSSH|EC|PRIVATE) .*PRIVATE KEY|EUFY_PASSWORD=.+|SMARTTHINGS_TOKEN=.+|password[\"']?\s*[:=]\s*[\"'][^\"']{6,}" \
+   >/dev/null 2>&1; then
+  echo "✖ pre-commit : secret potentiel détecté dans le diff. Vérifie avant de committer."
+  echo "  (forcer : git commit --no-verify)"
+  exit 1
+fi
+
+exit 0

@@ -1,0 +1,10 @@
+{
+  "name": "visio-browser-check",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Validation navigateur headless (chrome) du web-client C8 et de l'app Tizen C9",
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

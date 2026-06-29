@@ -1,0 +1,16 @@
+{
+  "name": "visio-token-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "C6 — JWT LiveKit, liens invités, admin (rooms/ingress) pour videocalltizen",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/token.test.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "livekit-server-sdk": "^2.9.0"
+  }
+}

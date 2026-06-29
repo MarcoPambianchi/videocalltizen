@@ -1,0 +1,15 @@
+{
+  "name": "visio-signaling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "C7 — Service de signalisation d'appel (sonnerie/decrochage) pour videocalltizen",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/signaling.test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

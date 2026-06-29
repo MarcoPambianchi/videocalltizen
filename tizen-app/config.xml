@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://videocalltizen.local/visio-tv"
+        version="1.0.0"
+        viewmodes="maximized">
+
+    <!-- Application Tizen TV — RÉCEPTION SEULE.
+         Pas de getUserMedia, pas de capture => aucun privilège caméra,
+         aucun certificat partenaire requis. Privilège 'internet' standard. -->
+    <tizen:application id="VisioTvRx0.VisioTV"
+                       package="VisioTvRx0"
+                       required_version="6.0"/>
+
+    <!-- Cible TV uniquement -->
+    <tizen:profile name="tv"/>
+
+    <!-- Réception réseau : LiveKit (WS+WebRTC) + signalisation WS -->
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+
+    <!-- Autorise le chargement du CDN livekit-client et la connexion au backend -->
+    <access origin="*" subdomains="true"/>
+
+    <!-- Plein écran : pas de barre d'état, contenu maximisé -->
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"/>
+
+    <name>Visio TV (réception)</name>
+    <description>Réception d'appel visio plein écran sur TV Samsung Tizen (réception seule).</description>
+    <author>videocalltizen</author>
+
+    <icon src="icon/icon.png"/>
+    <content src="index.html"/>
+
+</widget>

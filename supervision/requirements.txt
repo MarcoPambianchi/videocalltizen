@@ -1,0 +1,6 @@
+# C10 watchdog — aucune dépendance lourde requise.
+# watchdog.py fonctionne en stdlib pure (urllib + http.server), sans rien installer.
+#
+# 'requests' est listé UNIQUEMENT comme confort optionnel : le code ne l'importe pas.
+# Décommenter si vous adaptez watchdog.py pour l'utiliser.
+#requests>=2.31,<3

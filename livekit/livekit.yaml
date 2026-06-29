@@ -1,0 +1,31 @@
+# LiveKit server — C5 (SFU). Config locale (hors secrets).
+# Les clés API ne sont PAS ici : elles viennent de .env via LIVEKIT_KEYS (compose).
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50019
+  # DEV local : on n'essaie pas de détecter une IP publique (machine derrière NAT/WSL).
+  use_external_ip: false
+
+redis:
+  address: redis:6379
+
+# Clés API : fournies via la variable d'environnement LIVEKIT_KEYS (depuis .env),
+# jamais en clair ici. Voir docker-compose.yml (service livekit) et .env.
+
+logging:
+  level: info
+  json: false
+
+# TURN désactivé en local (candidats hôte/srflx suffisent entre conteneurs et navigateur local).
+# En prod : activer le profil 'turn' (coturn) ou la section turn intégrée ci-dessous.
+# turn:
+#   enabled: true
+#   domain: visio.example.com
+#   tls_port: 5349
+#   udp_port: 3478
+#   external_tls: true

@@ -1,0 +1,198 @@
+/* style.css — TV plein écran, fond noir, overlay lisible de loin (10-foot UI). */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: "Tizen Sans", "Samsung One", Arial, sans-serif;
+  color: #fff;
+  cursor: none; /* pas de pointeur sur TV */
+}
+
+/* Grille des participants distants : plein écran, recouvrement complet.
+   Le nombre de colonnes/lignes est piloté en JS (grid-template-* inline). */
+.grid {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: #000;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr;
+}
+
+/* Une tuile = la vidéo d'un participant + son nom. */
+.tile {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+.tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;   /* remplit la tuile sans bandes ; 'contain' pour le ratio exact */
+  background: #000;
+}
+.tile-label {
+  position: absolute;
+  left: 1vw;
+  bottom: 1vh;
+  z-index: 2;
+  padding: 0.3em 0.8em;
+  font-size: 1.4vw;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 0.3em;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bandeau d'état discret en bas. */
+.status {
+  position: fixed;
+  left: 2.5vw;
+  bottom: 3vh;
+  z-index: 50;
+  padding: 0.6em 1.1em;
+  font-size: 1.6vw;
+  line-height: 1.3;
+  color: #e8e8e8;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 0.4em;
+  max-width: 70vw;
+}
+
+/* Overlay "appel entrant" : assombrit l'écran et centre la carte d'appel. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.overlay.hidden,
+.incall-hint.hidden {
+  display: none;
+}
+
+.overlay-card {
+  text-align: center;
+  padding: 5vh 6vw;
+  background: rgba(20, 20, 24, 0.95);
+  border: 0.2vw solid rgba(255, 255, 255, 0.18);
+  border-radius: 1.2vw;
+  box-shadow: 0 0 6vw rgba(0, 0, 0, 0.8);
+  max-width: 80vw;
+}
+
+.overlay-title {
+  font-size: 3.2vw;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #4ec3ff;
+  margin-bottom: 1.5vh;
+}
+
+.overlay-caller {
+  font-size: 4.5vw;
+  font-weight: 800;
+  margin-bottom: 4vh;
+  word-break: break-word;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 3vw;
+  justify-content: center;
+  margin-bottom: 2.5vh;
+}
+
+/* Boutons gros et contrastés. Le focus télécommande est très visible. */
+.btn {
+  font-size: 2.4vw;
+  font-weight: 700;
+  padding: 1.4vh 3vw;
+  border: 0.3vw solid transparent;
+  border-radius: 0.8vw;
+  color: #fff;
+  cursor: pointer;
+  outline: none;
+}
+
+.btn-answer {
+  background: #1e9e4a;
+}
+
+.btn-reject {
+  background: #c0392b;
+}
+
+/* Focus télécommande : halo blanc + agrandissement. */
+.btn:focus {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 0.4vw rgba(255, 255, 255, 0.85);
+  transform: scale(1.06);
+}
+
+.overlay-hint {
+  font-size: 1.6vw;
+  color: #b8b8b8;
+}
+
+/* Indice "BACK pour raccrocher" pendant l'appel (coin haut-droit). */
+.incall-hint {
+  position: fixed;
+  top: 3vh;
+  right: 2.5vw;
+  z-index: 60;
+  padding: 0.6em 1.1em;
+  font-size: 1.6vw;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 0.4em;
+}
+
+/* Écran de VEILLE : vidéo ambiante en boucle + message. Recouvre l'écran au
+   repos (z-index 5, au-dessus de #remoteVideo) ; masqué pendant l'appel pour
+   révéler la vidéo distante. La vidéo de veille est mise en PAUSE pendant
+   l'appel et REPRISE à la même position en fin d'appel. */
+#standby {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  background: #000;
+}
+#standby.hidden {
+  display: none;
+}
+.standby-video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.standby-message {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 8vh;
+  text-align: center;
+  font-size: 3vw;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0.2vw 1vw rgba(0, 0, 0, 0.9);
+  padding: 0 6vw;
+}

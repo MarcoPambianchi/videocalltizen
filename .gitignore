@@ -1,0 +1,18 @@
+node_modules/
+*.log
+data/
+recordings/
+__pycache__/
+*.pyc
+.venv/
+state/
+
+# ── Secrets / identifiants — NE JAMAIS committer ──
+.env
+.env.*
+!.env.example
+*.bak
+*.pem
+*.key
+secrets/
+docker-compose.override.yml
