@@ -87,6 +87,27 @@ symétrique** (réseaux mobiles 4G/5G, certains pros).
 4. **Plage de relais coturn** : `min-port=49160` / `max-port=49200` (déjà fixée) — à
    **ouvrir au pare-feu** (§6).
 
+> ⚠️ **Piège auth** : ne mélangez pas `use-auth-secret` (secret partagé, mode prod
+> ci-dessus) et `user=`/`lt-cred-mech` (identifiants statiques) dans la **même** conf —
+> le secret partagé écrase l'auth user (`Cannot find credentials of user`) et le relais
+> ne s'alloue jamais. Choisissez un seul mode.
+
+### 4.bis Test d'accès distant en LOCAL (Tailscale, sans domaine/TLS)
+
+Pour valider l'accès hors-LAN **avant** la VM cloud, on relaie via Tailscale + coturn en
+**auth statique** (pas de secret partagé). Ce setup vit dans des fichiers **gitignorés** :
+`docker-compose.override.yml` (monte une conf locale + lance coturn) et
+`coturn/turnserver.local.conf` (`lt-cred-mech` + `user=visio:...`, `listening-ip=<IP
+Tailscale>`, `relay-ip=172.20.0.1`). Générer le lien interlocuteur prêt à l'emploi :
+
+```bash
+HOST=<IP_Tailscale> bash scripts/remote-link.sh   # imprime un lien plein écran via TURN
+```
+
+Le client web lit `?turn=&turnUser=&turnPass=` et force `iceTransportPolicy: "relay"`.
+En prod cloud (IP publique, candidats WebRTC directs) ce détour TURN local n'est plus
+nécessaire pour les clients non-NAT-symétrique.
+
 ---
 
 ## 5. Variables / secrets à changer (NE PAS garder les valeurs dev)

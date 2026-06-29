@@ -1,4 +1,8 @@
 FROM node:20-alpine
+# ffmpeg : relais RTSP(go2rtc) -> FLV(ingress). Le muxer RTMP natif de go2rtc produit,
+# pour une source poussée, un FLV que le pipeline GStreamer de l'Ingress refuse
+# ("could not add bin"). ffmpeg règle ça (cf go2rtcPublish dans server.js).
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev

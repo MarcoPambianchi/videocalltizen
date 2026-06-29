@@ -12,6 +12,7 @@
 
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { WebSocketServer } from "ws";
 
 const {
@@ -19,6 +20,8 @@ const {
   TOKEN_SERVICE_URL = "http://token-service:9080",
   GO2RTC_API_URL = "http://go2rtc:1984",
   GO2RTC_STREAM = "salon",
+  // Source RTSP go2rtc relayée vers l'Ingress par ffmpeg (cf go2rtcPublish).
+  GO2RTC_RTSP_URL = "rtsp://go2rtc:8554/salon",
   ROOM_NAME = "salon",
   CAMERA_IDENTITY = "camera-salon",
   TV_IDENTITY = "tv-salon",
@@ -97,18 +100,40 @@ async function callTokenService(method, path, body) {
   return data;
 }
 
-// Démarre/arrête la publication go2rtc -> ingress (la source 'salon' est lazy :
-// sans ce push, l'ingress RTMP reste vide et la TV rejoint une salle sans caméra).
+// Démarre/arrête la publication caméra -> Ingress via un relais FFMPEG (RTSP go2rtc
+// -> FLV ingress). On N'UTILISE PAS le push RTMP natif de go2rtc : pour une source
+// POUSSÉE (le shim publie son RTSP), le muxer RTMP de go2rtc produit un FLV que le
+// pipeline GStreamer de l'Ingress LiveKit refuse ("could not add bin"), d'où un cycle
+// de reconnexion infini ("En attente de la caméra"). Le muxer FLV de ffmpeg, lui,
+// passe sans souci (validé). -c copy : aucun ré-encodage (le shim fournit déjà H.264+AAC).
+let _relay = null;          // process ffmpeg courant
+let _relayStop = false;     // true = arrêt volontaire (ne pas relancer)
+
+function _spawnRelay(dst) {
+  const proc = spawn("ffmpeg", [
+    "-hide_banner", "-loglevel", "warning",
+    "-rtsp_transport", "tcp", "-i", GO2RTC_RTSP_URL,
+    "-c", "copy", "-f", "flv", dst,
+  ], { stdio: ["ignore", "ignore", "inherit"] });
+  proc.on("exit", (code) => {
+    // Relance tant que l'appel est actif (robustesse : gap P2P, redémarrage ingress…).
+    if (!_relayStop && _relay === proc) {
+      console.error(`[signaling] relais ffmpeg sorti (code ${code}) — relance dans 1s`);
+      setTimeout(() => { if (!_relayStop) _relay = _spawnRelay(dst); }, 1000);
+    }
+  });
+  return proc;
+}
+
 async function go2rtcPublish(dst) {
-  const u = `${GO2RTC_API_URL}/api/streams?src=${encodeURIComponent(GO2RTC_STREAM)}&dst=${encodeURIComponent(dst)}`;
-  const res = await fetch(u, { method: "POST" });
-  if (!res.ok) throw new Error(`go2rtc publish HTTP ${res.status}`);
+  _relayStop = false;
+  _relay = _spawnRelay(dst);
 }
 async function go2rtcStop() {
-  try {
-    await fetch(`${GO2RTC_API_URL}/api/streams?src=${encodeURIComponent(GO2RTC_STREAM)}&dst=`, { method: "POST" });
-  } catch (_) {
-    /* best effort */
+  _relayStop = true;
+  if (_relay) {
+    try { _relay.kill("SIGKILL"); } catch (_) { /* best effort */ }
+    _relay = null;
   }
 }
 

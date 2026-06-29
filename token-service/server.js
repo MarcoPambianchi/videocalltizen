@@ -7,6 +7,10 @@ import {
   RoomServiceClient,
   IngressClient,
   IngressInput,
+  IngressVideoOptions,
+  IngressVideoEncodingOptions,
+  VideoCodec,
+  TrackSource,
 } from "livekit-server-sdk";
 
 const {
@@ -140,12 +144,29 @@ app.post("/rooms/:room/ingress", async (req, res) => {
       bypassTranscoding = false,
     } = req.body || {};
     const input = inputType === "whip" ? IngressInput.WHIP_INPUT : IngressInput.RTMP_INPUT;
+    // Vidéo en UNE SEULE couche EXPLICITE (pas de simulcast). L'ingress v1.5.0 ignore
+    // les presets "1_LAYER" et crée quand même 2 couches : l'ajout du 2e bin GStreamer
+    // échoue ("could not add bin") -> publication incomplète -> timeout 10s -> l'ingress
+    // se termine et go2rtc reconnecte en boucle (~16s) = "En attente de la caméra". Une
+    // liste `layers` à un seul élément force réellement une couche unique et stabilise.
+    const video = new IngressVideoOptions({
+      source: TrackSource.CAMERA,
+      encodingOptions: {
+        case: "options",
+        value: new IngressVideoEncodingOptions({
+          videoCodec: VideoCodec.H264_BASELINE,
+          frameRate: 30,
+          layers: [{ quality: 2 /* HIGH */, width: 1280, height: 720, bitrate: 3_000_000 }],
+        }),
+      },
+    });
     const info = await ingressSvc.createIngress(input, {
       name,
       roomName: req.params.room,
       participantIdentity: identity,
       participantName: name,
       bypassTranscoding,
+      video,
     });
     res.json({
       ingressId: info.ingressId,

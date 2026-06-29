@@ -73,6 +73,14 @@ LOCK_WAIT_TIMEOUT = float(os.environ.get("EUFY_LOCK_TIMEOUT", "60"))
 RECONNECT_BASE = float(os.environ.get("EUFY_RECONNECT_BASE", "1"))
 RECONNECT_MAX = float(os.environ.get("EUFY_RECONNECT_MAX", "30"))
 
+# Watchdog de gel : le P2P Eufy (HomeBase) peut décrocher (eufy-security-ws coupe le
+# flux station après 5 s sans données, puis reconnecte la station). Le ws du shim reste
+# alors vivant SANS frame -> sans watchdog, la session resterait figée indéfiniment.
+# Si aucune frame n'arrive pendant STALL_TIMEOUT, on relance toute la session (nouveau
+# start_livestream), ce qui rétablit le producteur go2rtc et donc l'ingress->SFU.
+STALL_TIMEOUT = float(os.environ.get("EUFY_STALL_TIMEOUT", "12"))
+STALL_CHECK_INTERVAL = float(os.environ.get("EUFY_STALL_CHECK_INTERVAL", "2"))
+
 log = logging.getLogger("eufy-shim")
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -112,10 +120,12 @@ class Go2rtcPublisher:
     video et audio en flux H.264 et AAC SEPARES. ffmpeg accepte plusieurs entrees
     pipe, mais on ne peut alimenter qu'un seul stdin. Strategie : 2 ffmpeg distincts
     pousseraient 2 flux RTSP (video+audio melanges cote go2rtc = complexe). On choisit
-    le plus simple et robuste : un ffmpeg qui lit la VIDEO sur stdin (-f h264) et, si
-    l'audio est disponible, on ne l'envoie PAS ici — go2rtc derive deja une piste OPUS
-    de la source 'salon' (cf go2rtc.yaml `ffmpeg:salon#audio=opus`). Le shim publie donc
-    la VIDEO ; l'audio P2P est documente comme limite (transcodage Opus a cabler en P5).
+    le plus simple et robuste : un ffmpeg qui lit la VIDEO sur stdin (-f h264) et y
+    multiplexe une piste audio SILENCIEUSE (anullsrc->AAC). Cette piste audio est
+    OBLIGATOIRE : l'Ingress LiveKit fait planter son pipeline GStreamer sur un flux
+    video seul ("could not add bin"), d'ou un cycle de publication ("En attente de la
+    camera"). L'audio CAMERA reel (transcodage Opus du flux P2P AAC) sera cable en P5
+    et remplacera ce silence.
 
     NB L2 : kill()+wait() systematiques, broken pipe avale, aucun orphelin.
     """
@@ -134,17 +144,29 @@ class Go2rtcPublisher:
         if self.in_fmt == "h264":
             vcodec = ["-c:v", "copy"]
         else:
-            # Profil baseline = compatible bypass Ingress / tous navigateurs. Débit cible
-            # configurable pour la qualité finale (faible latence conservée).
+            # Encodage CALÉ sur la source synthétique (qui traverse l'Ingress sans souci) :
+            # profil HIGH + level 4.2 + framerate CONSTANT. Le flux P2P arrive à cadence
+            # variable (~15 i/s, gaps) ; sans CFR, l'Ingress LiveKit n'arrive pas à créer
+            # sa 2e couche vidéo ("could not add bin") et boucle. -r 25 -vsync cfr lisse la
+            # cadence ; -bf 0 -g 50 -tune zerolatency conservent la faible latence.
             vcodec = ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-                      "-profile:v", "baseline", "-pix_fmt", "yuv420p", "-g", "50", "-bf", "0",
+                      "-profile:v", "high", "-level", "4.2", "-pix_fmt", "yuv420p",
+                      "-r", "25", "-vsync", "cfr", "-g", "50", "-bf", "0",
                       "-b:v", EUFY_VIDEO_BITRATE, "-maxrate", EUFY_VIDEO_BITRATE,
                       "-bufsize", "7000k"]
         args = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
             "-fflags", "+genpts+discardcorrupt", "-err_detect", "ignore_err",
             "-f", self.in_fmt, "-i", "pipe:0",
-            *vcodec, "-an",
+            # Piste audio SILENCIEUSE obligatoire : l'Ingress LiveKit (transcodage
+            # GStreamer) attend de l'audio ; un flux VIDÉO SEUL fait échouer son pipeline
+            # ("could not add bin") -> publication incomplète -> timeout -> cycle infini
+            # ("En attente de la caméra"). anullsrc fournit un silence AAC. -re : cadence
+            # temps réel alignée sur la vidéo. (L'audio CAMÉRA réel sera câblé ici en P5.)
+            "-re", "-f", "lavfi", "-i", "anullsrc=channel_layout=mono:sample_rate=48000",
+            *vcodec,
+            "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "1",
+            "-map", "0:v", "-map", "1:a",
             "-rtsp_transport", "tcp", "-f", "rtsp", self.rtsp_url,
         ]
         self.proc = await asyncio.create_subprocess_exec(
@@ -160,6 +182,12 @@ class Go2rtcPublisher:
         """Ecrit un chunk video sur stdin de ffmpeg. Retourne False si le pipe est casse
         (ffmpeg mort / go2rtc indisponible) -> l'appelant declenchera un restart."""
         if not self.proc or self.proc.stdin is None:
+            return False
+        # ffmpeg a quitté (ex : go2rtc a refusé/coupé le RTSP) : le pipe peut encore
+        # accepter quelques octets avant le BrokenPipe -> on détecte la mort tôt via
+        # returncode pour relancer immédiatement le publisher (évite un producteur fantôme).
+        if self.proc.returncode is not None:
+            log.warning("ffmpeg a quitté (code %s) — relance du publisher", self.proc.returncode)
             return False
         try:
             self.proc.stdin.write(chunk)
@@ -359,6 +387,9 @@ class EufyShim:
                 await self._apply_stream_quality()
 
                 # Le publisher est lancé PARESSEUSEMENT à la 1ère frame (détection codec).
+                # Réinitialise la fraicheur AVANT start_livestream : l'objet shim est
+                # réutilisé entre sessions, un _t_last_frame périmé ferait gicler le watchdog.
+                self._t_last_frame = None
                 self._t_start_ls = time.time()
                 await self._cmd({
                     "command": "device.start_livestream",
@@ -367,10 +398,34 @@ class EufyShim:
                 self._livestreaming = True
                 log.info("livestream demarre pour %s (attente 1ere frame...)", EUFY_CAMERA_SERIAL)
 
-                # On attend l'ordre d'arret ; les octets sont pompes par le reader.
-                await self._stop.wait()
+                # On attend l'ordre d'arret OU un gel du flux (P2P tombe) ; les octets
+                # sont pompes par le reader. Un gel fait remonter une exception -> le
+                # superviseur (main) reconnecte et relance start_livestream.
+                await self._watch_until_stop_or_stall()
             finally:
                 await self._teardown_session()
+
+    async def _watch_until_stop_or_stall(self):
+        """Rend la main sur arret demande ; lève RuntimeError si le flux gèle.
+
+        Le P2P Eufy peut cesser de livrer des frames sans fermer la ws (eufy-security-ws
+        coupe alors la station après 5 s). On surveille la fraicheur : la 1ere frame doit
+        arriver sous STALL_TIMEOUT après start_livestream, puis chaque frame suivante aussi.
+        """
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=STALL_CHECK_INTERVAL)
+                return  # arret demande
+            except asyncio.TimeoutError:
+                pass
+            # Reference de fraicheur : derniere frame, sinon le debut du livestream.
+            ref = self._t_last_frame or self._t_start_ls
+            if ref is not None:
+                idle = time.time() - ref
+                if idle > STALL_TIMEOUT:
+                    raise RuntimeError(
+                        f"flux gele {idle:.0f}s (P2P Eufy tombe ?) — relance de la session"
+                    )
 
     async def _teardown_session(self):
         """Arret propre : stop_livestream, ferme reader, kill ffmpeg, ferme ws. Idempotent."""
