@@ -105,7 +105,12 @@
   function attachRemoteTrack(track, participant) {
     const el = track.attach(); // <video> ou <audio>
     el.dataset.sid = track.sid;
+    const pid = participant ? participant.identity : "?";
+    el.dataset.pid = pid;
     if (track.kind === Track.Kind.Video) {
+      // Évite les doublons : retire toute vidéo RÉSIDUELLE du même participant
+      // (re-souscription / participant recréé) -> pas de "split d'écran" fantôme.
+      els.remoteWrap.querySelectorAll('video[data-pid="' + pid + '"]').forEach((v) => v.remove());
       hide(els.remotePlaceholder);
       el.classList.add("video");
       el.setAttribute("playsinline", "");
@@ -120,6 +125,12 @@
   function detachTrack(track) {
     // detach() retourne les éléments média créés par attach().
     track.detach().forEach((el) => el.remove());
+  }
+
+  // Retire tous les éléments média (vidéo/audio) d'un participant qui quitte —
+  // sinon une vidéo "fantôme" reste et la grille se divise en 2.
+  function removeParticipantMedia(pid) {
+    els.remoteWrap.querySelectorAll('[data-pid="' + pid + '"]').forEach((e) => e.remove());
   }
 
   // Si plus aucune vidéo distante n'est affichée, on remontre le placeholder.
@@ -156,7 +167,7 @@
       })
       .on(RoomEvent.ParticipantDisconnected, (p) => {
         console.log("[visio] participant déconnecté :", p.identity);
-        // Si c'était la caméra, le placeholder réapparaît via TrackUnsubscribed.
+        removeParticipantMedia(p.identity);  // nettoie les éléments fantômes
         refreshRemotePlaceholder();
       })
       .on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
