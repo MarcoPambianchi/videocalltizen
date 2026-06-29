@@ -97,11 +97,11 @@ Le point critique du sens sortant est le segment **S350 → Cloud Eufy → eufy-
 
 | ID | Service / artefact | Image / build | Port(s) hôte | Rôle | Statut |
 |----|--------------------|---------------|--------------|------|--------|
-| **C1** | `eufy-visio` | `eufy-security-ws:hb2hb3` | 3010 (profil `eufy`) | Session Eufy **dédiée** (trusted device distinct du Gardien), expose le livestream P2P | 🟡 écrit, **non branché** (profil off) |
+| **C1** | `eufy-visio` | `bropat/eufy-security-ws` | 3010 (profil `eufy`) | Session Eufy **dédiée** (trusted device distinct de toute autre intégration), expose le livestream P2P | 🟡 écrit, **non branché** (profil off) |
 | **C2** | `eufy-shim` | build `./eufy-ingest` (python:3.12-slim) | — (profil `eufy`) | Convertit les octets P2P Eufy en flux exploitable par go2rtc | 🟡 écrit, non testé sur vraie caméra |
-| **C3** | `go2rtc` | `alexxit/go2rtc:1.9.9` | 1984, 8554, 8555 | Adaptation média ; source `salon` (synthétique en dev, Eufy en prod) ; ajoute piste OPUS | ✅ opérationnel (synthétique) |
-| **C4** | `ingress` | `livekit/ingress:v1.5.2` | 1935 (rtmp), 8085 (whip), 7885-7895/udp | Transforme le flux poussé en **participant** `camera-salon` dans la salle | ✅ testé P1 |
-| **C5** | `livekit` (+ `coturn`) | `livekit/livekit-server:v1.8.4` (+ `coturn:4.6-alpine`) | 7880, 7881/tcp, 50000-50019/udp ; TURN 3478/5349 (profil `turn`) | SFU WebRTC ; TURN pour NAT symétrique en prod | ✅ SFU OK ; 🟡 TURN prod uniquement |
+| **C3** | `go2rtc` | `alexxit/go2rtc:1.9.14` | 1984, 8554, 8555 | Adaptation média ; source `salon` (synthétique en dev, Eufy en prod) ; ajoute piste OPUS | ✅ opérationnel (synthétique) |
+| **C4** | `ingress` | `livekit/ingress:v1.5.0` | 1935 (rtmp), 8085 (whip), 7885-7895/udp | Transforme le flux poussé en **participant** `camera-salon` dans la salle | ✅ testé P1 |
+| **C5** | `livekit` (+ `coturn`) | `livekit/livekit-server:v1.9.12` (+ `coturn:4.6-alpine`) | 7880, 7881/tcp, 50000-50019/udp ; TURN 3478/5349 (profil `turn`) | SFU WebRTC ; TURN pour NAT symétrique en prod | ✅ SFU OK ; 🟡 TURN prod uniquement |
 | **C6** | `token-service` | build `./token-service` (node:20-alpine) | 9080 | JWT (interlocuteur/TV), liens invités, admin rooms + ingress | ✅ testé |
 | **C7** | `signaling` | build `./signaling` (node:20-alpine) | 9090 | Sonnerie → décrochage → raccrochage (websocket) | ✅ testé (intégration) |
 | **C8** | `web-client` | build `./web-client` (nginx) | 9088 | Client interlocuteur (LiveKit JS, UMD CDN) | ✅ validé navigateur |
@@ -126,32 +126,33 @@ LiveKit + Ingress, sans port exposé.
 
 ---
 
-## 5. Contrainte structurante — slot P2P unique partagé avec le Gardien
+## 5. Contrainte structurante — slot P2P unique partagé avec une autre intégration
 
-La machine héberge **déjà** le système de surveillance **« Gardien »**, qui exploite
-**la même caméra Eufy S350** via une brique `eufy-security-ws` (conteneur actif sur
-`ws://127.0.0.1:3000`, trusted device `eufy-mcp`).
+Si la machine héberge **déjà** une autre intégration utilisant **la même caméra Eufy
+S350** (ex. domotique/surveillance type Home Assistant) via une brique
+`eufy-security-ws` (instance `eufy-security-ws` existante sur un autre port, avec un
+trusted device distinct), il faut composer avec cette intégration.
 
 **Le conflit est physique, pas logiciel** : la HomeBase / caméra ne supporte **qu'UN
-seul livestream P2P à la fois**. Le Gardien sérialise déjà ses accès via un `flock`
-(`eufy_client.py`) et fonctionne en **mode ponctuel** (réveil P2P → snapshot + court
-audio → stop). **Une visio tient le flux en continu** : pendant un appel, le Gardien
-est **aveugle**.
+seul livestream P2P à la fois**. Une telle intégration sérialise typiquement ses accès
+via un `flock` et fonctionne souvent en **mode ponctuel** (réveil P2P → snapshot + court
+audio → stop). **Une visio tient le flux en continu** : pendant un appel, l'autre
+intégration est **aveugle**.
 
 **Décision actée — isolation totale sauf ce point :**
 
-- Répertoire dédié (`/home/marco/videocalltizen`), projet Compose dédié (`visio`),
+- Répertoire dédié, projet Compose dédié (`visio`),
   réseau dédié, ports libres, units `visio-*`.
 - Le **seul** point de contact est le « tap » caméra : une instance
   `eufy-security-ws` **dédiée** (`eufy-visio`, **trusted device distinct**, port
-  **3010** ≠ 3000), sous profil Docker **`eufy` désactivé par défaut**.
+  **3010**), sous profil Docker **`eufy` désactivé par défaut**.
 - Conséquence à intégrer dans la signalisation / supervision (C7/C10) : avant
   d'ouvrir le livestream visio, considérer le slot P2P comme **exclusif** ; il faudra
-  une coordination explicite avec le Gardien (mutex / fenêtre d'appel) au moment du
-  branchement réel. Ce point reste **ouvert** tant que le profil `eufy` n'est pas activé.
+  une coordination explicite avec l'autre intégration (mutex / fenêtre d'appel) au moment
+  du branchement réel. Ce point reste **ouvert** tant que le profil `eufy` n'est pas activé.
 
-> **À NE JAMAIS toucher :** les services Gardien en cours d'exécution,
-> `/home/marco/.openclaw`, le trusted device `eufy-mcp`, le port 3000.
+> **À NE JAMAIS toucher :** les services de l'autre intégration en cours d'exécution,
+> son code, son trusted device, son port `eufy-security-ws`.
 
 ---
 

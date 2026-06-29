@@ -39,10 +39,10 @@ test-token:
 test-signaling:
 	bash scripts/test-signaling.sh
 
-# Profil 'eufy' — DÉMARRE l'ingestion réelle (touche la vraie caméra, concurrence Gardien).
+# Profil 'eufy' — DÉMARRE l'ingestion réelle (touche la vraie caméra, concurrence une autre intégration).
 eufy-up:       ## ⚠️ branche la vraie caméra Eufy (instance dédiée eufy-visio)
 	@echo "⚠️  Ceci ouvre une session sur le compte Eufy réel et peut entrer en"
-	@echo "    concurrence avec le Gardien pour l'unique slot P2P de la S350."
+	@echo "    concurrence avec une autre intégration pour l'unique slot P2P de la S350."
 	docker compose --profile eufy up -d eufy-visio eufy-shim
 
 clean:

@@ -1,6 +1,6 @@
 [Unit]
 # C10 — watchdog de la chaîne d'ingestion (go2rtc -> ingress -> livekit).
-# Démarre APRÈS la stack visio. Préfixe visio-* (jamais eufy-*/gardien-*).
+# Démarre APRÈS la stack visio. Préfixe visio-* (jamais les units d'une autre intégration).
 Description=videocalltizen — watchdog supervision (C10)
 Documentation=file:///home/marco/videocalltizen/supervision/RUNBOOK.md
 After=visio-stack.service network-online.target

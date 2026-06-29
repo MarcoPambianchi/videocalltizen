@@ -1,6 +1,6 @@
 [Unit]
 # C10 — wrapper oneshot : démarre la stack visio (docker compose up -d).
-# Préfixe visio-* : ne JAMAIS confondre avec les units eufy-*/gardien-* existantes.
+# Préfixe visio-* : ne JAMAIS confondre avec les units d'une autre intégration utilisant la même caméra.
 # N'active PAS les profils 'eufy'/'turn' (caméra réelle / TURN) — source synthétique par défaut.
 Description=videocalltizen — stack visio (docker compose up -d)
 Documentation=file:///home/marco/videocalltizen/supervision/RUNBOOK.md

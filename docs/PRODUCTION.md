@@ -103,7 +103,7 @@ symétrique** (réseaux mobiles 4G/5G, certains pros).
 | **Secret TURN** | [`.env`](../.env) `TURN_SHARED_SECRET` · [`coturn/turnserver.conf`](../coturn/turnserver.conf) `static-auth-secret` | **régénérer**, identique aux 2 |
 | **Realm TURN** | [`.env`](../.env) `TURN_REALM` · `turnserver.conf` `realm` | `visio.example.com` |
 | **WEB_CLIENT_URL** (token-service) | env du service / [`.env`](../.env) | `https://visio.example.com` |
-| Identifiants **Eufy** | [`.env`](../.env) `EUFY_*` | renseigner (instance dédiée, **trusted device distinct** `eufy-visio`, port 3010 — jamais `eufy-mcp`/3000) |
+| Identifiants **Eufy** | [`.env`](../.env) `EUFY_*` | renseigner (instance dédiée, **trusted device distinct** `eufy-visio`, port 3010 — jamais le trusted device/port d'une autre intégration) |
 
 Régénérer en une commande : `./scripts/gen-keys.sh` (ou `openssl rand -hex 32`).
 
@@ -134,18 +134,20 @@ Notes :
 - Les ports d'**API internes** (`9080` token-service, `9090` signaling, `1984` go2rtc,
   `9088` web-client direct) **ne doivent PAS être exposés** publiquement : ils passent
   derrière le reverse-proxy / restent privés.
-- **Ne jamais** exposer le port **3000** (Gardien) ni **3010** (eufy-visio) sur Internet.
+- **Ne jamais** exposer le port **3010** (eufy-visio) — ni le port `eufy-security-ws`
+  d'une autre intégration — sur Internet.
 
 ---
 
 ## 7. Profil Eufy en prod
 
 L'activation du profil `eufy` (vraie caméra) suit les mêmes règles qu'en local et reste
-**la dernière étape**, soumise à la contrainte du **slot P2P unique partagé avec le
-Gardien** ([`ARCHITECTURE.md`](ARCHITECTURE.md) §5). En prod comme en dev, une visio
-tient le flux en continu ⇒ **coordination explicite avec le Gardien** requise avant
-d'activer. `eufy-visio` reste sur un **trusted device distinct** (`eufy-visio`, port
-**3010**), jamais `eufy-mcp`/3000.
+**la dernière étape**, soumise à la contrainte du **slot P2P unique partagé avec toute
+autre intégration utilisant la même caméra** ([`ARCHITECTURE.md`](ARCHITECTURE.md) §5).
+En prod comme en dev, une visio tient le flux en continu ⇒ **coordination explicite avec
+l'autre intégration** requise avant d'activer. `eufy-visio` reste sur un **trusted device
+distinct** (`eufy-visio`, port **3010**), jamais le trusted device/port d'une autre
+intégration.
 
 ---
 
@@ -171,7 +173,7 @@ d'activer. `eufy-visio` reste sur un **trusted device distinct** (`eufy-visio`, 
 [ ] Test P1 (synthétique) sur la VM : participant 'camera-salon' apparaît
 [ ] Test P2 : interlocuteur reçoit le média en wss:// depuis l'extérieur
 [ ] Test interlocuteur derrière NAT mobile (4G) → vérifie le relais TURN
-[ ] (dernier) profil 'eufy' : coordination Gardien (slot P2P), puis P0 latence réelle
+[ ] (dernier) profil 'eufy' : coordination avec l'autre intégration (slot P2P), puis P0 latence réelle
 ```
 
 Une fois la stack synthétique validée sur la VM (P1/P2 en `wss://` depuis l'extérieur),

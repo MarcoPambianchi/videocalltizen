@@ -129,7 +129,7 @@ services:
 
   # ── C1 — Ingestion Eufy DÉDIÉE (profil 'eufy' — touche la vraie caméra) ──────
   # ATTENTION : démarrer ce service ouvre une session sur le compte Eufy réel et
-  # peut entrer en concurrence avec le Gardien pour l'unique slot P2P de la S350.
+  # peut entrer en concurrence avec une autre intégration pour l'unique slot P2P de la S350.
   eufy-visio:
     # Image officielle par défaut ; surchargeable via EUFY_WS_IMAGE (.env).
     image: ${EUFY_WS_IMAGE:-bropat/eufy-security-ws:latest}

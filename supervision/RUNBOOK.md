@@ -3,9 +3,10 @@
 Exploitation de la stack visio (Architecture B, source synthétique par défaut) et de
 son watchdog. Projet Compose : `visio`. Conteneurs nommés `visio-<svc>-1`.
 
-> Rappel d'isolation : ce projet est **totalement séparé** du système Gardien
-> (units `gardien-*`/`eufy-*`, caméra Eufy S350 partagée). Ici tout est préfixé
-> `visio-*`. Ne JAMAIS toucher aux units du Gardien ni à `/home/marco/.openclaw`.
+> Rappel d'isolation : ce projet est **totalement séparé** de toute autre intégration
+> utilisant la même caméra Eufy S350 (ex. domotique/surveillance type Home Assistant,
+> avec ses propres units/services). Ici tout est préfixé `visio-*`. Ne JAMAIS toucher
+> aux units/services ni au code de cette autre intégration.
 
 ---
 
@@ -145,20 +146,22 @@ curl -s -X POST "http://localhost:1984/api/streams?src=salon&dst=$DST"
 
 ---
 
-## 5. Contrainte slot P2P partagé avec le Gardien
+## 5. Contrainte slot P2P partagé avec une autre intégration
 
 ⚠️ La HomeBase/caméra Eufy S350 ne supporte **qu'UN seul livestream P2P à la fois**.
-Le Gardien (trusted device `eufy-mcp`) et ce projet (instance dédiée
-`eufy-visio`, trusted device distinct, profil Docker `eufy`) se disputent ce **slot unique**.
+Toute autre intégration utilisant la même caméra (trusted device distinct) et ce projet
+(instance dédiée `eufy-visio`, trusted device distinct, profil Docker `eufy`) se
+disputent ce **slot unique**.
 
 - En **dev / source synthétique** (mode par défaut de ce runbook) : **aucun** conflit,
   rien ne touche la caméra réelle. Le watchdog peut tourner en continu sans risque.
-- En **prod / profil `eufy` activé** : pendant un appel visio, le **Gardien est aveugle**
-  (conflit physique, pas logiciel). **Ne pas** activer le profil `eufy` tant qu'un réveil
-  Gardien est en cours, et inversement. Le watchdog ne sérialise PAS ce slot — il ne
-  relance que l'ingestion média côté go2rtc/ingress/livekit, jamais la session P2P Eufy.
-- Avant un appel long en prod : confirmer qu'aucune routine Gardien ne va se déclencher,
-  ou accepter que le Gardien soit suspendu pour la durée de l'appel.
+- En **prod / profil `eufy` activé** : pendant un appel visio, l'**autre intégration est
+  aveugle** (conflit physique, pas logiciel). **Ne pas** activer le profil `eufy` tant
+  qu'un réveil de l'autre intégration est en cours, et inversement. Le watchdog ne
+  sérialise PAS ce slot — il ne relance que l'ingestion média côté go2rtc/ingress/livekit,
+  jamais la session P2P Eufy.
+- Avant un appel long en prod : confirmer qu'aucune routine de l'autre intégration ne va
+  se déclencher, ou accepter qu'elle soit suspendue pour la durée de l'appel.
 
 ---
 
@@ -167,7 +170,7 @@ Le Gardien (trusted device `eufy-mcp`) et ce projet (instance dédiée
 Avant :
 - [ ] `./scripts/wait-ready.sh` → tout vert.
 - [ ] `curl -s http://localhost:9095/status` → `healthy:true`, `reconnects` noté (base).
-- [ ] (prod) profil `eufy` : confirmer le slot P2P libre côté Gardien (cf. §5).
+- [ ] (prod) profil `eufy` : confirmer le slot P2P libre côté autre intégration (cf. §5).
 - [ ] `FREEZE_TIMEOUT` adapté (défaut 15 s convient ; augmenter si réseau lent).
 
 Pendant :
@@ -178,7 +181,7 @@ Pendant :
 
 Après :
 - [ ] Noter le delta `reconnects` et les pics `consecutive_failures`.
-- [ ] (prod) arrêter le profil `eufy` pour rendre le slot P2P au Gardien.
+- [ ] (prod) arrêter le profil `eufy` pour rendre le slot P2P à l'autre intégration.
 
 ---
 

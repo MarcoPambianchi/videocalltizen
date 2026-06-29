@@ -82,8 +82,9 @@ l'intérêt du TURN/IP publique en prod, cf. [`PRODUCTION.md`](PRODUCTION.md)).
 
 **Objectif P0 :** obtenir une valeur chiffrée, reproductible, de la latence
 **glass-to-glass** du sens sortant, et isoler la part imputable au P2P Eufy. À faire
-**sur la vraie caméra** (profil `eufy`), donc en coordination avec le Gardien (slot
-P2P unique, voir [`ARCHITECTURE.md`](ARCHITECTURE.md) §5).
+**sur la vraie caméra** (profil `eufy`), donc en coordination avec toute autre
+intégration utilisant la même caméra (slot P2P unique, voir
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §5).
 
 ### Méthode A — horloge filmée (glass-to-glass, la plus fiable)
 1. Afficher une **horloge à millisecondes** (page web `Date.now()` plein écran, ou

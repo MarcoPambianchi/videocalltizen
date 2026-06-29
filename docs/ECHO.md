@@ -121,7 +121,7 @@ prototyper le filtre sur la tonalité 440 Hz pour valider la **syntaxe** sans la
 ## 5. Mesurer l'écho en conditions réelles
 
 L'écho ne se mesure **qu'avec la vraie chaîne Eufy** (profil `eufy`, donc en
-coordination avec le Gardien — slot P2P unique, [`ARCHITECTURE.md`](ARCHITECTURE.md) §5).
+coordination avec une autre intégration utilisant la même caméra — slot P2P unique, [`ARCHITECTURE.md`](ARCHITECTURE.md) §5).
 
 ### Protocole
 1. **Appel de test** interlocuteur ⟷ domicile, TV allumée et restituant l'interlocuteur.

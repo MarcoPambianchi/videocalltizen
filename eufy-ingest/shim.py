@@ -9,7 +9,8 @@ passthrough -c:v copy, audio transcode en Opus). go2rtc adapte ensuite vers
 WebRTC/WHIP pour la chaine LiveKit.
 
 Contraintes structurantes (cf README / cahier) :
-  - HomeBase 2 : UN SEUL livestream P2P a la fois, partage avec le Gardien.
+  - HomeBase 2 : UN SEUL livestream P2P a la fois, partage avec une autre integration
+    utilisant la meme camera.
     => verrou flock INTER-PROCESS (LIVESTREAM_LOCK) tenu pendant toute la session.
   - L2 : ne jamais laisser de ffmpeg orphelin. proc.kill()+wait() en finally,
     feeder annule proprement, broken pipe geree sans planter la boucle.
@@ -30,7 +31,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import fcntl  # POSIX uniquement (conteneur Linux) — verrou inter-process partage avec le Gardien
+import fcntl  # POSIX uniquement (conteneur Linux) — verrou inter-process partage avec une autre integration
 
 import websockets
 
@@ -49,13 +50,15 @@ GO2RTC_RTSP_URL = os.environ.get("GO2RTC_RTSP_URL") or (
     f"rtsp://{GO2RTC_RTSP_HOST}:{GO2RTC_RTSP_PORT}/{GO2RTC_STREAM}"
 )
 
-# Verrou flock PARTAGE avec le Gardien. Le Gardien utilise
-# <eufy-perception-mcp>/state/livestream.lock (cf eufy_client.py LIVESTREAM_LOCK).
-# On pointe le MEME fichier par defaut pour serialiser les deux process. Configurable.
+# Verrou flock PARTAGE avec toute autre integration utilisant la meme camera.
+# Le defaut est un chemin NEUTRE local a ce projet. Pour se coordonner avec une autre
+# integration (ex. domotique/surveillance type Home Assistant), pointer cette variable
+# vers le MEME fichier de verrou que cette integration afin de serialiser les deux
+# process sur l'unique slot P2P de la HomeBase. Configurable via EUFY_LIVESTREAM_LOCK.
 LIVESTREAM_LOCK = Path(
     os.environ.get(
         "EUFY_LIVESTREAM_LOCK",
-        "/home/marco/.openclaw/tools/eufy-perception-mcp/state/livestream.lock",
+        "/tmp/eufy-livestream.lock",
     )
 )
 LOCK_WAIT_TIMEOUT = float(os.environ.get("EUFY_LOCK_TIMEOUT", "60"))
@@ -173,15 +176,15 @@ class Go2rtcPublisher:
 
 @asynccontextmanager
 async def livestream_lock(path: Path, timeout: float):
-    """Verrou flock EXCLUSIF inter-process partage avec le Gardien.
+    """Verrou flock EXCLUSIF inter-process partage avec une autre integration.
 
-    Tant qu'il est tenu, le Gardien (eufy_client.py) attend, et reciproquement : on ne
+    Tant qu'il est tenu, l'autre integration attend, et reciproquement : on ne
     streame JAMAIS en meme temps sur l'unique slot P2P de la HomeBase. Acquisition
     non-bloquante en boucle pour ne pas figer l'event loop ; TimeoutError au-dela de
     `timeout`. Le fichier reste (lock advisory) ; on relache et on ferme en sortie.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Mode "a" : jamais de troncature du fichier de verrou partagé avec le Gardien
+    # Mode "a" : jamais de troncature du fichier de verrou partagé avec l'autre integration
     # (le flock advisory fonctionne sur un fd ouvert en append).
     f = open(path, "a")
     deadline = time.time() + timeout
@@ -193,7 +196,7 @@ async def livestream_lock(path: Path, timeout: float):
             except BlockingIOError:
                 if time.time() > deadline:
                     raise TimeoutError(
-                        f"livestream lock {path} occupe (Gardien actif ?) apres {timeout}s"
+                        f"livestream lock {path} occupe (autre integration active ?) apres {timeout}s"
                     )
                 await asyncio.sleep(0.5)
         log.info("flock acquis : %s", path)
@@ -351,7 +354,7 @@ async def main():
                 break
             backoff = RECONNECT_BASE
         except TimeoutError as e:
-            # flock occupe par le Gardien : on retente plus tard, sans bruit excessif.
+            # flock occupe par l'autre integration : on retente plus tard, sans bruit excessif.
             log.warning("%s — nouvelle tentative dans %.0fs", e, backoff)
         except Exception as e:
             log.warning("session interrompue : %s — reconnexion dans %.0fs", e, backoff)

@@ -12,12 +12,12 @@ ensuite le flux vers WebRTC/WHIP pour la chaîne Ingress → LiveKit (P1).
 
 ## Stratégie : instance dédiée `eufy-visio`
 
-Le shim ne parle **jamais** à l'instance `eufy-security-ws` du Gardien
-(`ws://127.0.0.1:3000`, trusted device `eufy-mcp`). Il parle à une instance
+Le shim ne parle **jamais** à une instance `eufy-security-ws` existante d'une autre
+intégration (autre port, trusted device distinct). Il parle à une instance
 **dédiée** `eufy-visio` (`docker-compose.yml`, profil `eufy`), trusted device
 **distinct**, sur **`ws://127.0.0.1:3010`** (`EUFY_WS_PORT`). Deux trusted devices
 séparés = deux jetons de session Eufy indépendants ; on évite d'invalider la session
-du Gardien et réciproquement.
+de l'autre intégration et réciproquement.
 
 Variables (`.env`) :
 
@@ -28,7 +28,7 @@ Variables (`.env`) :
 | `EUFY_CAMERA_SERIAL` | *(vide)* | n° de série de la S350 à streamer (**obligatoire**) |
 | `GO2RTC_RTSP_URL` | `rtsp://127.0.0.1:8554/salon` | destination RTSP go2rtc (host network) |
 | `GO2RTC_STREAM` | `salon` | nom du stream go2rtc cible |
-| `EUFY_LIVESTREAM_LOCK` | `…/eufy-perception-mcp/state/livestream.lock` | **flock partagé avec le Gardien** |
+| `EUFY_LIVESTREAM_LOCK` | `/tmp/eufy-livestream.lock` | **flock partagé avec une autre intégration** (pointer vers son fichier de verrou pour se coordonner) |
 | `EUFY_LOCK_TIMEOUT` | `60` | attente max du flock (s) |
 
 En l'absence de `EUFY_CAMERA_SERIAL`, le shim **refuse de démarrer un livestream**
@@ -36,28 +36,31 @@ En l'absence de `EUFY_CAMERA_SERIAL`, le shim **refuse de démarrer un livestrea
 
 ---
 
-## Contrainte n°1 : un seul slot P2P, partagé avec le Gardien (flock)
+## Contrainte n°1 : un seul slot P2P, partagé avec une autre intégration (flock)
 
-La **HomeBase 2** ne tolère **qu'UN seul livestream P2P à la fois**. Le Gardien
-(`eufy-perception-mcp/eufy_client.py`) sérialise déjà ses réveils ponctuels via un
-**`flock`** sur `state/livestream.lock`. Le shim **réutilise le même fichier de
-verrou** (`EUFY_LIVESTREAM_LOCK`) : tant que la visio tient le flux, le Gardien
-attend ; et si le Gardien prend un snapshot, le shim attend (`TimeoutError` →
-reconnexion exponentielle).
+La **HomeBase 2** ne tolère **qu'UN seul livestream P2P à la fois**. Toute autre
+intégration utilisant la même caméra (ex. domotique/surveillance type Home Assistant)
+sérialise typiquement ses accès P2P via un **`flock`** sur un fichier de verrou. Pour
+se coordonner, le shim peut **pointer le même fichier de verrou** (`EUFY_LIVESTREAM_LOCK`)
+que cette autre intégration : tant que la visio tient le flux, l'autre intégration
+attend ; et si l'autre intégration prend la main (p. ex. un snapshot), le shim attend
+(`TimeoutError` → reconnexion exponentielle).
 
-- **Le conflit est physique, pas logiciel.** Pendant un appel visio, le Gardien est
-  **aveugle** (le flux est tenu en continu, contrairement à ses réveils ponctuels).
+- **Le conflit est physique, pas logiciel.** Pendant un appel visio, l'autre intégration
+  est **aveugle** (le flux est tenu en continu, contrairement à des réveils ponctuels).
 - Le verrou est **advisory** (`fcntl.flock`) : les deux process doivent l'honorer.
-  Le chemin par défaut pointe sur le verrou du Gardien ; il est **configurable** si
-  l'intégrateur déplace le fichier (montage volume partagé en conteneur).
-- En conteneur (`network_mode: host`), monter le répertoire `state/` du Gardien en
-  volume pour que le `flock` soit réellement partagé entre les deux processus.
+  Le chemin par défaut est neutre (`/tmp/eufy-livestream.lock`) ; il est **configurable** :
+  pour se coordonner, l'intégrateur le pointe vers le fichier de verrou de l'autre
+  intégration (montage volume partagé en conteneur).
+- En conteneur (`network_mode: host`), monter le répertoire de verrou de l'autre
+  intégration en volume pour que le `flock` soit réellement partagé entre les deux
+  processus.
 
 ---
 
-## Ce qu'on a appris de la référence Gardien (lecture seule)
+## Ce qu'on a appris d'une intégration de référence `eufy-security-ws` (lecture seule)
 
-Source : `~/.openclaw/tools/eufy-perception-mcp/eufy_client.py` & `discover.py`.
+Source : une implémentation cliente de référence du protocole `eufy-security-ws`.
 
 - **Handshake** : à la connexion, `eufy-security-ws` envoie d'abord une frame
   `version` (à consommer par `recv()`), puis on envoie `set_api_schema`
@@ -76,9 +79,9 @@ Source : `~/.openclaw/tools/eufy-perception-mcp/eufy_client.py` & `discover.py`.
   `flock(LOCK_EX|LOCK_NB)` en boucle non bloquante (pour ne pas figer l'event loop),
   car « le `_lock` asyncio ne sérialise QUE dans un même process ». C'est exactement
   la contrainte qu'on honore ici.
-- **Anti-orphelin (L2)** : le Gardien `proc.kill()` **et** `await proc.wait()` en
-  `finally`, et n'utilise jamais `communicate()` quand un feeder alimente `stdin` en
-  parallèle. On reprend ce pattern.
+- **Anti-orphelin (L2)** : l'intégration de référence fait `proc.kill()` **et**
+  `await proc.wait()` en `finally`, et n'utilise jamais `communicate()` quand un feeder
+  alimente `stdin` en parallèle. On reprend ce pattern.
 
 ---
 
@@ -122,8 +125,8 @@ plus fiable que de streamer des octets bruts via l'API HTTP. Override possible v
 - **L3 — déconnexions ws** : `ping_interval=20` (keep-alive) ; toute exception de
   session déclenche une **reconnexion exponentielle** bornée (`1s → 30s`),
   interruptible par `SIGINT`/`SIGTERM`.
-- **L8 — contention du slot P2P** : si le `flock` est tenu par le Gardien, la session
-  lève `TimeoutError` et retente plus tard (backoff), sans jamais forcer le flux.
+- **L8 — contention du slot P2P** : si le `flock` est tenu par l'autre intégration, la
+  session lève `TimeoutError` et retente plus tard (backoff), sans jamais forcer le flux.
 - **Arrêt propre** : handlers `SIGINT`/`SIGTERM` → `stop_livestream`, kill ffmpeg,
   fermeture ws, **relâche du flock**.
 
@@ -133,8 +136,8 @@ plus fiable que de streamer des octets bruts via l'API HTTP. Override possible v
 
 L'authentification du compte Eufy peut exiger une **vérification (MFA / e-mail OTP)**
 ou un **captcha** au **premier** démarrage d'un nouveau trusted device. Comme
-`eufy-visio` est un device **distinct** du Gardien, il déclenche **son propre**
-challenge la première fois :
+`eufy-visio` est un device **distinct** de toute autre intégration, il déclenche
+**son propre** challenge la première fois :
 
 1. Démarrer **seulement** `eufy-visio` (`docker compose --profile eufy up eufy-visio`)
    et suivre ses logs.
@@ -144,7 +147,7 @@ challenge la première fois :
 3. Une fois le **trusted device** validé, le jeton de session est persistant : les
    redémarrages suivants n'exigent plus de challenge (sauf invalidation côté Eufy).
 
-> Ne **jamais** réutiliser le trusted device du Gardien (`eufy-mcp`) : un même device
+> Ne **jamais** réutiliser le trusted device d'une autre intégration : un même device
 > partagé invaliderait les sessions à tour de rôle.
 
 ---
@@ -159,9 +162,9 @@ challenge la première fois :
   (la S350 publie en H.264 sur HomeBase 2 — cas nominal).
 - **Latence / qualité P2P (P0)** : non mesurées ici (build synthétique). À valider sur
   la vraie caméra.
-- **flock partagé** : suppose que le répertoire `state/` du Gardien est accessible
-  (même hôte, ou volume monté). Sinon, ajuster `EUFY_LIVESTREAM_LOCK` vers un chemin
-  commun aux deux conteneurs.
+- **flock partagé** : suppose que le fichier de verrou de l'autre intégration est
+  accessible (même hôte, ou volume monté). Sinon, ajuster `EUFY_LIVESTREAM_LOCK` vers un
+  chemin commun aux deux conteneurs.
 
 ---
 

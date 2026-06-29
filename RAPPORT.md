@@ -1,12 +1,12 @@
 # Rapport — construction nocturne autonome (videocalltizen)
 
-**Date :** 2026-06-29 · **Périmètre :** stack de visioconférence Architecture B, **isolée** du système Gardien existant, construite et **testée de bout en bout** en local avec source synthétique.
+**Date :** 2026-06-29 · **Périmètre :** stack de visioconférence Architecture B, **isolée** de toute autre intégration utilisant la même caméra, construite et **testée de bout en bout** en local avec source synthétique.
 
 ---
 
 ## TL;DR
 
-✅ **Le socle complet est monté et testé vert de bout en bout**, sans jamais toucher ta caméra Eufy ni le Gardien (qui tourne toujours, intact). La chaîne média réelle (go2rtc → Ingress → SFU → abonné) fonctionne ; le cycle d'appel complet (sonnerie → décrochage → token → ingestion → raccrochage) fonctionne ; le client web et l'app TV Tizen se chargent et se connectent.
+✅ **Le socle complet est monté et testé vert de bout en bout**, sans jamais toucher ta caméra Eufy ni l'autre intégration (qui tourne toujours, intacte). La chaîne média réelle (go2rtc → Ingress → SFU → abonné) fonctionne ; le cycle d'appel complet (sonnerie → décrochage → token → ingestion → raccrochage) fonctionne ; le client web et l'app TV Tizen se chargent et se connectent.
 
 Ce qui **reste** ne peut PAS être fait sans toi / sans la vraie caméra : **mesure P0** de la latence P2P Eufy réelle, branchement de l'instance `eufy-visio`, signature/sideload sur la vraie TV, et 5 décisions de cadrage (§14 du cahier).
 
@@ -24,7 +24,7 @@ Ce qui **reste** ne peut PAS être fait sans toi / sans la vraie caméra : **mes
 | `eufy-ingest/test/test_framing.py` | P1(réel) | ✅ parsing trames H.264 + flock + arrêt propre (mock, **zéro caméra**) |
 | watchdog C10 | P6 | ✅ surveille 3 maillons, expose `/status`, **auto-relance** sur coupure |
 
-**Preuve d'isolation :** `docker compose up` ne démarre que les 7 services du socle (profils `eufy`/`turn` OFF). Le Gardien (`eufy-security-ws` Up 6h, units perception/gardien/hue actives, port 3000) est **intact**. Aucune écriture dans `.openclaw` (seul un flock advisory partagé, sous profil désactivé).
+**Preuve d'isolation :** `docker compose up` ne démarre que les 7 services du socle (profils `eufy`/`turn` OFF). Toute autre intégration utilisant la même caméra (instance `eufy-security-ws` existante sur un autre port) reste **intacte**. Aucune écriture dans le répertoire d'état de l'autre intégration (seul un flock advisory partagé, sous profil désactivé).
 
 ---
 
@@ -68,11 +68,11 @@ Essayer un appel « à la main » :
 
 ## Ce qui reste (nécessite toi / la vraie caméra)
 
-1. **P0 — mesure latence P2P Eufy (priorité absolue, bloquant du cahier).** Brancher `eufy-visio` (`make eufy-up`, ⚠️ touche la vraie caméra et concurrence le Gardien sur l'unique slot P2P), renseigner `EUFY_*` dans `.env`, mesurer la latence sortante réelle. Voir `docs/LATENCE.md`. Si > ~1,5–2 s, rouvrir l'arbitrage d'architecture.
+1. **P0 — mesure latence P2P Eufy (priorité absolue, bloquant du cahier).** Brancher `eufy-visio` (`make eufy-up`, ⚠️ touche la vraie caméra et concurrence toute autre intégration sur l'unique slot P2P), renseigner `EUFY_*` dans `.env`, mesurer la latence sortante réelle. Voir `docs/LATENCE.md`. Si > ~1,5–2 s, rouvrir l'arbitrage d'architecture.
 2. **Décisions de cadrage (§14 du cahier)** : mode décrochage (manuel/auto), stratégie anti-écho (O4+O5 par défaut, voir `docs/ECHO.md`), 1-à-1 vs groupe, distribution app TV (sideload vs Seller Office), durée d'appel cible.
 3. **App TV sur la vraie QN90F** : `tizen-app/build.sh` → `.wgt` → signer (Certificate Manager, DUID) → sideload. Valider la réception WebRTC réelle (limite L7).
 4. **WHIP-bypass** (latence prod) : ajouter un publisher WHIP (ffmpeg ≥7.1 ou gstreamer) — voir `FINDINGS.md`. RTMP marche déjà.
-5. **Coordination slot P2P avec le Gardien** : le flock est câblé mais la politique « fenêtre d'appel = Gardien en pause » reste à décider.
+5. **Coordination slot P2P avec l'autre intégration** : le flock est câblé mais la politique « fenêtre d'appel = autre intégration en pause » reste à décider.
 
 ---
 
@@ -102,5 +102,5 @@ appel → libération de l'ingress ; reset UI sur erreur ; watchdog **gated sur 
 - **RTMP comme chemin d'ingestion vérifié** (go2rtc ne peut pas publier en WHIP — cf `FINDINGS.md`). WHIP-bypass documenté pour la prod.
 - **Source synthétique** (mire ffmpeg) pour découpler 90 % du dev de la caméra réelle.
 - **Assertion média côté serveur (P1) + client headless rtc-node (P2)** : tests reproductibles sans navigateur ni caméra.
-- **Instance `eufy-visio` dédiée** (trusted device distinct), profil Docker désactivé → isolation totale du Gardien à ce stade.
+- **Instance `eufy-visio` dédiée** (trusted device distinct), profil Docker désactivé → isolation totale de l'autre intégration à ce stade.
 - **Versions d'images figées** : `livekit-server:v1.9.12`, `ingress:v1.5.0`, `go2rtc:1.9.14`, `redis:7-alpine`.

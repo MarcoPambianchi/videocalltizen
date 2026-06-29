@@ -26,4 +26,4 @@ En prod, renseigner `rtmp_base_url`/`whip_base_url` dans la config Ingress (`ING
 - Tags initialement faux corrigés : `ingress:v1.5.2` et `livekit-server:v1.8.4` n'existent pas.
 
 ## Rappel contrainte caméra (non testée ici — synthétique)
-La latence P2P Eufy (L3) et la durée max de session (L1) ne sont **mesurables que sur la vraie caméra** (phase P0, hors build synthétique). L'instance `eufy-visio` dédiée partage l'unique slot P2P de la S350 avec le Gardien.
+La latence P2P Eufy (L3) et la durée max de session (L1) ne sont **mesurables que sur la vraie caméra** (phase P0, hors build synthétique). L'instance `eufy-visio` dédiée partage l'unique slot P2P de la S350 avec toute autre intégration utilisant la même caméra.
