@@ -3,16 +3,17 @@
 # Préfixe visio-* : ne JAMAIS confondre avec les units d'une autre intégration utilisant la même caméra.
 # N'active PAS les profils 'eufy'/'turn' (caméra réelle / TURN) — source synthétique par défaut.
 Description=videocalltizen — stack visio (docker compose up -d)
-Documentation=file:///home/marco/videocalltizen/supervision/RUNBOOK.md
+Documentation=file:///opt/videocalltizen/supervision/RUNBOOK.md
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
+# Adaptez User et WorkingDirectory à votre installation.
 Type=oneshot
 RemainAfterExit=yes
-User=marco
-WorkingDirectory=/home/marco/videocalltizen
+User=videocall
+WorkingDirectory=/opt/videocalltizen
 # Socle DEV (sans Eufy ni TURN). Adapter la liste de services au besoin.
 ExecStart=/usr/bin/docker compose up -d redis livekit ingress go2rtc token-service signaling web-client
 ExecStop=/usr/bin/docker compose stop

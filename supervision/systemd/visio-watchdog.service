@@ -2,14 +2,15 @@
 # C10 — watchdog de la chaîne d'ingestion (go2rtc -> ingress -> livekit).
 # Démarre APRÈS la stack visio. Préfixe visio-* (jamais les units d'une autre intégration).
 Description=videocalltizen — watchdog supervision (C10)
-Documentation=file:///home/marco/videocalltizen/supervision/RUNBOOK.md
+Documentation=file:///opt/videocalltizen/supervision/RUNBOOK.md
 After=visio-stack.service network-online.target
 Wants=visio-stack.service network-online.target
 
 [Service]
+# Adaptez User et WorkingDirectory à votre installation.
 Type=simple
-User=marco
-WorkingDirectory=/home/marco/videocalltizen/supervision
+User=videocall
+WorkingDirectory=/opt/videocalltizen/supervision
 # URLs hôte par défaut (la stack publie 1984/9080/7880 sur localhost).
 Environment=GO2RTC_URL=http://localhost:1984
 Environment=TOKEN_SERVICE_URL=http://localhost:9080
@@ -18,7 +19,7 @@ Environment=ROOM_NAME=salon
 Environment=CAMERA_IDENTITY=camera-salon
 Environment=GO2RTC_STREAM=salon
 Environment=STATUS_PORT=9095
-ExecStart=/usr/bin/python3 /home/marco/videocalltizen/supervision/watchdog.py
+ExecStart=/usr/bin/python3 /opt/videocalltizen/supervision/watchdog.py
 Restart=on-failure
 RestartSec=5
 

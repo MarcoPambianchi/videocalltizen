@@ -12,9 +12,12 @@ son watchdog. Projet Compose : `visio`. Conteneurs nommés `visio-<svc>-1`.
 
 ## 1. Démarrage / Arrêt
 
+> Les chemins `/opt/videocalltizen` ci-dessous sont un **exemple** — adaptez-les à votre
+> installation (ainsi que `User=` et `WorkingDirectory=` dans les units systemd).
+
 ### Manuel (dev, source synthétique)
 ```bash
-cd /home/marco/videocalltizen
+cd /opt/videocalltizen
 cp -n .env.example .env                       # si pas déjà fait
 docker compose up -d redis livekit ingress go2rtc token-service signaling web-client
 ./scripts/wait-ready.sh                        # attend que tout réponde
@@ -23,20 +26,20 @@ docker compose up -d redis livekit ingress go2rtc token-service signaling web-cl
 
 Lancer le watchdog en avant-plan (debug) :
 ```bash
-python3 /home/marco/videocalltizen/supervision/watchdog.py
+python3 /opt/videocalltizen/supervision/watchdog.py
 ```
 
 Arrêt :
 ```bash
-cd /home/marco/videocalltizen && docker compose stop
+cd /opt/videocalltizen && docker compose stop
 # ou tout supprimer : docker compose down
 ```
 
 ### Via systemd (units fournies)
 Les units vivent dans `supervision/systemd/`. Installation (à faire une fois, en root) :
 ```bash
-sudo cp /home/marco/videocalltizen/supervision/systemd/visio-stack.service /etc/systemd/system/
-sudo cp /home/marco/videocalltizen/supervision/systemd/visio-watchdog.service /etc/systemd/system/
+sudo cp /opt/videocalltizen/supervision/systemd/visio-stack.service /etc/systemd/system/
+sudo cp /opt/videocalltizen/supervision/systemd/visio-watchdog.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now visio-stack.service visio-watchdog.service
 ```
@@ -127,7 +130,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:7880/       # livekit 
 
 Si le watchdog n'arrive pas à reconnecter (échec persistant `ERROR`), refaire le P1 à la main :
 ```bash
-cd /home/marco/videocalltizen
+cd /opt/videocalltizen
 ./scripts/test-p1-ingestion.sh        # recrée room + ingress + publish go2rtc
 ```
 Puis redémarrer le watchdog pour repartir d'un backoff neuf :

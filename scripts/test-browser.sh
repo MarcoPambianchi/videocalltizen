@@ -2,8 +2,8 @@
 # Validation navigateur headless (chrome) du web-client (C8) et de l'app Tizen (C9).
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"; ROOT="$(dirname "$HERE")"
-NODE="$(command -v node 2>/dev/null)"; [ -n "$NODE" ] || NODE=$(ls /home/marco/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
-NPM="$(command -v npm 2>/dev/null)"; [ -n "$NPM" ] || NPM=$(ls /home/marco/.nvm/versions/node/*/bin/npm 2>/dev/null | head -1)
+NODE="$(command -v node 2>/dev/null)"; [ -n "$NODE" ] || NODE=$(ls $HOME/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
+NPM="$(command -v npm 2>/dev/null)"; [ -n "$NPM" ] || NPM=$(ls $HOME/.nvm/versions/node/*/bin/npm 2>/dev/null | head -1)
 [ -n "$NODE" ] || { echo "node introuvable"; exit 1; }
 
 if [ ! -d "$ROOT/tests/browser-check/node_modules" ]; then
