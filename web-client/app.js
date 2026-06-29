@@ -16,9 +16,24 @@
 
   // ── Configuration ───────────────────────────────────────────────────────────
   // URL du token-service (C6) côté hôte. Surchargée via le query param ?api=.
-  const TOKEN_SERVICE = new URLSearchParams(location.search).get("api") || "http://localhost:9080";
+  const _qs = new URLSearchParams(location.search);
+  const TOKEN_SERVICE = _qs.get("api") || "http://localhost:9080";
   // Identité de la caméra distante à mettre en grand (cf. conventions du projet).
   const CAMERA_IDENTITY = "camera-salon";
+  // Relais TURN optionnel (accès distant derrière NAT/Tailscale) :
+  //   ?turn=turn:host:3478&turnUser=...&turnPass=...
+  const TURN_URL = _qs.get("turn");
+  const TURN_USER = _qs.get("turnUser") || "";
+  const TURN_PASS = _qs.get("turnPass") || "";
+  function buildRtcConfig() {
+    if (!TURN_URL) return undefined;
+    // 'relay' force le passage par le TURN (le chemin direct vers l'IP interne du
+    // SFU n'est pas joignable depuis l'extérieur).
+    return {
+      iceServers: [{ urls: TURN_URL, username: TURN_USER, credential: TURN_PASS }],
+      iceTransportPolicy: "relay",
+    };
+  }
 
   // ── Références DOM ──────────────────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
@@ -176,7 +191,7 @@
       });
 
     try {
-      await room.connect(wsUrl, token);
+      await room.connect(wsUrl, token, { rtcConfig: buildRtcConfig() });
     } catch (e) {
       setStatus("Échec connexion", "error");
       throw e;
