@@ -41,10 +41,12 @@ EUFY_WS_PORT = int(os.environ.get("EUFY_WS_PORT", "3010"))
 EUFY_WS_URL = os.environ.get("EUFY_WS_URL") or f"ws://{EUFY_WS_HOST}:{EUFY_WS_PORT}"
 EUFY_CAMERA_SERIAL = os.environ.get("EUFY_CAMERA_SERIAL", "").strip()
 SCHEMA_VERSION = int(os.environ.get("EUFY_SCHEMA_VERSION", "21"))
-# Qualité de streaming à appliquer (1=720P, 2=1080P, 3=2K, 4=4K). 720P -> le flux H.265
-# est petit, donc le transcodage H.265->H.264 (obligatoire pour WebRTC) devient trivial.
-# Vide = ne pas toucher au réglage de la caméra.
+# Qualité de streaming à appliquer (1=720P, 2=1080P, 3=2K, 4=4K). 720P par défaut :
+# transcodage H.265->H.264 léger et flux stable (le double ré-encodage RTMP de l'Ingress
+# rend le 1080p plus instable). Vide = ne pas toucher le réglage de la caméra.
 EUFY_STREAM_QUALITY = os.environ.get("EUFY_STREAM_QUALITY", "1").strip()
+# Débit cible du transcodage H.264 (qualité). 720p : ~2,5-3,5 Mbit/s donne une bonne image.
+EUFY_VIDEO_BITRATE = os.environ.get("EUFY_VIDEO_BITRATE", "3000k").strip()
 
 # Cible go2rtc. En host network, go2rtc ecoute RTSP sur 127.0.0.1:8554 et l'API sur 1984.
 GO2RTC_RTSP_HOST = os.environ.get("GO2RTC_RTSP_HOST", "127.0.0.1")
@@ -132,8 +134,12 @@ class Go2rtcPublisher:
         if self.in_fmt == "h264":
             vcodec = ["-c:v", "copy"]
         else:
+            # Profil baseline = compatible bypass Ingress / tous navigateurs. Débit cible
+            # configurable pour la qualité finale (faible latence conservée).
             vcodec = ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-                      "-profile:v", "baseline", "-pix_fmt", "yuv420p", "-g", "50", "-bf", "0"]
+                      "-profile:v", "baseline", "-pix_fmt", "yuv420p", "-g", "50", "-bf", "0",
+                      "-b:v", EUFY_VIDEO_BITRATE, "-maxrate", EUFY_VIDEO_BITRATE,
+                      "-bufsize", "7000k"]
         args = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
             "-fflags", "+genpts+discardcorrupt", "-err_detect", "ignore_err",
