@@ -218,6 +218,14 @@ class EufyShim:
         self.publisher = None
         self._stop = asyncio.Event()
         self._livestreaming = False
+        # Instrumentation P0 (latence démarrage L4, cadence, gels L2/L6).
+        self._in_fmt = None
+        self._t_start_ls = None
+        self._t_first_frame = None
+        self._t_last_frame = None
+        self._frames = 0
+        self._bytes = 0
+        self._max_gap = 0.0
 
     # ── Protocole eufy-security-ws ───────────────────────────────────────────
     async def _cmd(self, msg, timeout=30):
@@ -251,11 +259,39 @@ class EufyShim:
                     ev["serialNumber"] != EUFY_CAMERA_SERIAL:
                 return
             chunk = _buffer_bytes(ev)
-            if chunk and self.publisher is not None:
-                ok = await self.publisher.write(chunk)
-                if not ok:
-                    # ffmpeg/go2rtc tombe : on relance le publisher (pas la session ws).
-                    await self._restart_publisher()
+            if not chunk:
+                return
+            now = time.time()
+            # Lancement PARESSEUX du publisher avec le CODEC réellement émis
+            # (H264 2C/HB2 ou H265 eufyCam3/HB3), lu dans la metadata du flux.
+            if self.publisher is None:
+                meta = ev.get("metadata") or {}
+                codec = str(meta.get("videoCodec") or "H264").upper()
+                self._in_fmt = "hevc" if codec in ("H265", "HEVC") else "h264"
+                self.publisher = Go2rtcPublisher(GO2RTC_RTSP_URL, in_fmt=self._in_fmt)
+                await self.publisher.start()
+                self._t_first_frame = now
+                startup = now - (self._t_start_ls or now)
+                log.info("INSTRUMENT 1ere frame apres %.2fs (latence demarrage L4) ; codec=%s -> -f %s",
+                         startup, codec, self._in_fmt)
+            # Cadence / détection de gel (L2/L6).
+            if self._t_last_frame is not None:
+                gap = now - self._t_last_frame
+                self._max_gap = max(self._max_gap, gap)
+                if gap > 3.0:
+                    log.warning("INSTRUMENT trou de %.1fs dans le flux (gel ?)", gap)
+            self._t_last_frame = now
+            self._frames += 1
+            self._bytes += len(chunk)
+            if self._frames % 300 == 0:
+                dur = now - (self._t_first_frame or now)
+                rate = self._frames / dur if dur > 0 else 0
+                log.info("INSTRUMENT %d chunks, %.1f chunks/s, %.1f Mo, gap max %.1fs",
+                         self._frames, rate, self._bytes / 1e6, self._max_gap)
+            ok = await self.publisher.write(chunk)
+            if not ok:
+                # ffmpeg/go2rtc tombe : on relance le publisher (pas la session ws).
+                await self._restart_publisher()
         # 'livestream audio data' : ignore ici (audio gere par go2rtc, cf limites README).
 
     # ── Session livestream ───────────────────────────────────────────────────
@@ -263,7 +299,7 @@ class EufyShim:
         log.info("redemarrage du publisher go2rtc")
         if self.publisher is not None:
             await self.publisher.stop()
-        self.publisher = Go2rtcPublisher(GO2RTC_RTSP_URL, in_fmt="h264")
+        self.publisher = Go2rtcPublisher(GO2RTC_RTSP_URL, in_fmt=self._in_fmt or "h264")
         await self.publisher.start()
 
     async def run_session(self):
@@ -283,15 +319,14 @@ class EufyShim:
                 await self._cmd({"command": "set_api_schema", "schemaVersion": SCHEMA_VERSION})
                 await self._cmd({"command": "start_listening"})
 
-                self.publisher = Go2rtcPublisher(GO2RTC_RTSP_URL, in_fmt="h264")
-                await self.publisher.start()
-
+                # Le publisher est lancé PARESSEUSEMENT à la 1ère frame (détection codec).
+                self._t_start_ls = time.time()
                 await self._cmd({
                     "command": "device.start_livestream",
                     "serialNumber": EUFY_CAMERA_SERIAL,
                 })
                 self._livestreaming = True
-                log.info("livestream demarre pour %s -> %s", EUFY_CAMERA_SERIAL, GO2RTC_RTSP_URL)
+                log.info("livestream demarre pour %s (attente 1ere frame...)", EUFY_CAMERA_SERIAL)
 
                 # On attend l'ordre d'arret ; les octets sont pompes par le reader.
                 await self._stop.wait()
