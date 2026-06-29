@@ -1,119 +1,148 @@
-# videocalltizen — Visioconférence TV Tizen ⟷ caméra Eufy S350 (Architecture B)
+# videocalltizen — Visioconférence sur TV Samsung Tizen ⟷ caméra Eufy S350
 
-Stack **indépendante** de visioconférence, conforme au cahier des charges « Architecture B »
-(ingestion via cloud P2P Eufy, TV en réception seule, zéro équipement ajouté chez la personne).
+Permettre à un proche distant d'**appeler en visioconférence** une personne via sa **télévision
+Samsung (Tizen)** : la TV **affiche et fait entendre** l'interlocuteur, tandis qu'une **caméra de
+surveillance Eufy S350** déjà présente dans la pièce sert de **caméra + micro** de la personne.
+**Aucun équipement n'est ajouté** chez la personne, et la TV est en **réception seule**.
 
-> **Statut :** squelette de dérisquage construit et testé **en local** avec une **source vidéo
-> synthétique** (aucune caméra réelle sollicitée). Le branchement de la vraie Eufy S350 est la
-> dernière étape, isolée derrière un profil Docker désactivé par défaut.
+Cas d'usage type : un appel familial vers une personne âgée ou peu à l'aise avec la technique — elle
+n'a **rien à faire**, la TV décroche toute seule.
 
----
+> **« Architecture B ».** L'image de la personne est récupérée depuis le **cloud P2P d'Eufy**
+> (comportement natif de la caméra), adaptée dans une infrastructure **self-hosted** (go2rtc →
+> LiveKit), puis la TV ne fait que **recevoir**. C'est la seule approche possible quand on s'interdit
+> d'installer le moindre équipement sur le réseau de la personne, et que la TV ne peut pas capturer de
+> vidéo elle-même (impossible sans certificat partenaire Samsung).
 
-## ⚠️ Contrainte structurante n°1 — ressource caméra partagée
-
-Cette machine héberge **déjà** un système de surveillance domicile « **Gardien** » qui exploite la
-**même caméra Eufy S350** via le **même type de brique `eufy-security-ws`** (conteneur déjà actif
-sur `ws://127.0.0.1:3000`, trusted device dédié `eufy-mcp`).
-
-La HomeBase / caméra ne supporte **qu'UN seul livestream P2P à la fois** (le code du Gardien le
-sérialise déjà via un `flock`, cf. `eufy_client.py`). Le Gardien fonctionne en mode **ponctuel**
-(1 réveil P2P → snapshot + court audio → stop). **Une visio tient le flux en continu** ⇒ pendant un
-appel, le Gardien est aveugle. **Ce conflit est physique, pas logiciel.**
-
-**Décision projet (actée) :** ce projet est **totalement isolé** du Gardien — répertoire dédié,
-projet Compose dédié (`visio`), réseau dédié, ports libres, units `visio-*`. Le seul point de
-contact possible est le « tap » caméra, branché **en dernier** via une **instance
-`eufy-security-ws` dédiée** (`eufy-visio`, trusted device distinct, port 3010), sous profil
-Docker `eufy` **désactivé par défaut**. Voir [`eufy-ingest/README.md`](eufy-ingest/README.md).
+> **Statut : preuve de concept construite et testée de bout en bout en local**, avec une **source
+> vidéo synthétique** (mire) — aucune caméra réelle n'est nécessaire pour lancer et tester. Le
+> branchement de la vraie Eufy S350 est la dernière étape, isolée derrière un profil Docker
+> désactivé par défaut.
 
 ---
 
-## Cartographie des services et des ports
+## Comment ça marche
 
-Tous les ports ci-dessous ont été choisis pour **ne croiser aucun** des ~80 ports déjà occupés sur
-la machine (Gardien, GeminiFit, OpenClaw, neo4j, searxng, telegram-bot-api, etc.).
+```
+caméra Eufy S350 ──P2P (cloud Eufy)──▶ eufy-security-ws ──▶ go2rtc ──▶ LiveKit Ingress ──▶ LiveKit SFU ──┐
+                                                                                                        ├─▶ TV Tizen (réception seule)
+                                                                                       interlocuteur ◀──┘   + interlocuteur(s) (client web)
+```
 
-| Service | Composant cahier | Image | Ports (hôte) | Rôle |
+- **go2rtc** adapte le flux (vidéo H.264 en passthrough, audio transcodé en Opus).
+- **LiveKit** (SFU WebRTC self-hosted) route la visio entre la TV, la caméra et le(s) interlocuteur(s).
+- L'**app TV Tizen** reçoit en plein écran, **décroche automatiquement**, peut afficher un **contenu
+  TV de fond** (repris en fin d'appel) et compose un **écran splitté** quand il y a plusieurs appelants.
+- Un **service de signalisation** ajoute la notion d'« appel » (décrochage), absente de LiveKit.
+
+Détail des composants `C1`…`C10` : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Démarrage rapide (local, source synthétique)
+
+**Prérequis :** Docker + Docker Compose v2. *(Pour la suite de tests : Node ≥ 21 et un Chrome/Chromium.)*
+
+```bash
+git clone https://github.com/MarcoPambianchi/videocalltizen.git
+cd videocalltizen
+./scripts/setup.sh     # crée .env (valeurs dev) + active un hook anti-secret
+make up                # monte la stack et attend qu'elle soit prête
+make test              # suite de tests -> doit afficher « TOUT VERT 🟢 »
+```
+
+Tout vert ⇒ la chaîne `go2rtc → Ingress → LiveKit → clients` fonctionne de bout en bout avec une
+**mire synthétique**, **sans aucune caméra ni compte**. Pour installer **avec vos propres
+identifiants** (caméra, domaine, TURN…), voir **[INSTALL.md](INSTALL.md)**.
+
+## ⚠️ Contrainte clé — un seul flux caméra à la fois
+
+La HomeBase / caméra Eufy ne supporte **qu'UN seul livestream P2P à la fois**. Si vous faites
+**aussi** tourner une autre intégration qui exploite la **même caméra** (par exemple une intégration
+domotique ou de surveillance type Home Assistant), les deux **ne peuvent pas streamer simultanément** :
+il faut les **coordonner**.
+
+Ce projet reste donc **totalement isolé** (projet Compose `visio` dédié, réseau et ports dédiés) et
+ne touche la caméra qu'au tout dernier moment, via une **instance `eufy-security-ws` dédiée** sous le
+**profil Docker `eufy` désactivé par défaut**. Le mécanisme de coordination (verrou `flock` partagé,
+configurable) est décrit dans [eufy-ingest/README.md](eufy-ingest/README.md).
+
+## Services et ports
+
+> Les ports sont choisis hors des plages par défaut courantes. Ajustez-les dans
+> [docker-compose.yml](docker-compose.yml) s'ils entrent en conflit avec des services que vous faites
+> déjà tourner.
+
+| Service | Composant | Image | Ports (hôte) | Rôle |
 |---|---|---|---|---|
 | `redis` | — | `redis:7-alpine` | (interne) | backend LiveKit + Ingress |
-| `livekit` | C5 (SFU) | `livekit/livekit-server` | 7880, 7881/tcp, 50000-50019/udp | serveur SFU WebRTC |
+| `livekit` | C5 | `livekit/livekit-server` | 7880, 7881/tcp, 50000-50019/udp | serveur SFU WebRTC |
 | `ingress` | C4 | `livekit/ingress` | 1935 (rtmp), 8085 (whip), 7885-7895/udp | flux → participant |
 | `go2rtc` | C3 | `alexxit/go2rtc` | 1984 (api), 8554 (rtsp), 8555 (webrtc) | adaptation média + source synthétique |
 | `token-service` | C6 | build local (node) | 9080 | JWT + liens invités + admin LiveKit |
-| `signaling` | C7 | build local (node) | 9090 | sonnerie / décrochage (websocket) |
+| `signaling` | C7 | build local (node) | 9090 | signalisation d'appel (websocket) |
 | `web-client` | C8 | build local (nginx) | 9088 | client interlocuteur (LiveKit JS) |
 | `coturn` | C5 (TURN) | `coturn/coturn` | profil `turn` (prod) | relais NAT |
-| `eufy-visio` | C1 (dédié) | `eufy-security-ws:hb2hb3` | profil `eufy` (port 3010) | ingestion Eufy isolée |
-| `eufy-shim` | C2 | build local (python) | profil `eufy` | P2P octets → go2rtc |
+| `eufy-visio` | C1 | `bropat/eufy-security-ws`¹ | profil `eufy` (port 3010) | ingestion Eufy isolée |
+| `eufy-shim` | C2 | build local (python) | profil `eufy` | octets P2P → go2rtc |
 
-`tizen-app/` (C9) et `supervision/` (C10) sont des composants hors-Compose (build/sideload TV et
-watchdog).
+¹ Image officielle [`bropat/eufy-security-ws`](https://github.com/bropat/eufy-security-ws), surchargeable
+via `EUFY_WS_IMAGE` dans `.env`. Service **désactivé par défaut** (profil `eufy`).
 
-## Identifiants média (dev)
+`tizen-app/` (C9) et `supervision/` (C10) sont des composants **hors-Compose** (build/sideload de
+l'app TV et watchdog).
 
-Source de vérité **unique** : [`.env`](.env.example) (copié depuis [`.env.example`](.env.example),
-**non commité**). LiveKit et l'Ingress lisent leurs clés depuis `.env` (via `LIVEKIT_KEYS` /
-`INGRESS_CONFIG_BODY` dans le compose) — **aucun secret dans un fichier suivi**. Pour la prod :
-`./scripts/gen-keys.sh`. Salle de référence : `salon` ; participant caméra : `camera-salon`.
-Installation détaillée : [INSTALL.md](INSTALL.md).
+## Secrets et identifiants
 
----
-
-## Démarrer (local, source synthétique)
-
-```bash
-cp .env.example .env
-docker compose up -d --build redis livekit ingress go2rtc token-service
-./scripts/wait-ready.sh          # attend que tous les services répondent
-./scripts/test-p1-ingestion.sh   # P1 : pousse la source synthétique -> assert participant 'camera-salon'
-```
-
-Tout vert ⇒ la chaîne **go2rtc → Ingress → LiveKit** fonctionne de bout en bout, sans toucher l'Eufy.
+Source **unique** : un fichier **`.env`** (gitignoré, jamais commité), créé par `./scripts/setup.sh`.
+LiveKit et l'Ingress lisent leurs clés depuis `.env` (via `LIVEKIT_KEYS` / `INGRESS_CONFIG_BODY` dans
+le compose) — **aucun secret réel dans un fichier suivi**. Génération de secrets forts :
+`./scripts/gen-keys.sh`. Un hook `pre-commit` empêche de committer un `.env` par accident.
+Salle de référence : `salon` ; participant caméra : `camera-salon`.
 
 ## Tester
 
-| Script | Phase | Vérifie |
-|---|---|---|
-| `scripts/wait-ready.sh` | — | tous les services up |
-| `scripts/test-p1-ingestion.sh` | P1 | `camera-salon` apparaît avec piste vidéo+audio (assert côté serveur) |
-| `scripts/test-p2-media.sh` | P2 | un client headless **reçoit réellement** des octets média de `camera-salon` |
-| `scripts/test-token.sh` | P2 | token-service émet des JWT valides + lien invité |
-| `scripts/test-signaling.sh` | P4 | cycle sonnerie → décrochage → raccrochage |
-
-## Phases (cahier §12)
-
-| Phase | Statut local |
+| Script (`make test` les enchaîne) | Vérifie |
 |---|---|
-| P0 mesures Eufy (latence P2P réelle) | **à faire sur la vraie caméra** (hors build synthétique) |
-| P1 chaîne d'ingestion | ✅ testée (synthétique) |
-| P2 client interlocuteur | ✅ token + client web + assert média headless |
-| P3 app TV réception | 🟡 app Tizen écrite, non testable sans la TV (validée navigateur) |
-| P4 signalisation d'appel | ✅ service + tests d'intégration |
-| P5 audio / écho | 🟡 stratégie O4+O5 câblée + documentée (§8 cahier) |
-| P6 durcissement | 🟡 watchdog + reconnexion + units systemd + runbook |
+| `scripts/test-token.sh` | le token-service émet des JWT valides + un lien invité |
+| `scripts/test-p1-ingestion.sh` | `camera-salon` apparaît dans la salle avec vidéo+audio (assert serveur) |
+| `scripts/test-p2-media.sh` | un client headless **reçoit et décode** réellement la vidéo via le SFU |
+| `scripts/test-signaling.sh` | cycle d'appel complet : décrochage → caméra publiée → raccrochage |
+| `scripts/test-browser.sh` | client web (connecté) + app TV (veille/reprise, écran splitté) en Chrome headless |
+
+## État d'avancement
+
+| Étape | Statut |
+|---|---|
+| Mesure de la latence P2P Eufy réelle | **à faire sur la vraie caméra** (hors build synthétique) |
+| Chaîne d'ingestion (go2rtc → Ingress → SFU) | ✅ testée (source synthétique) |
+| Client interlocuteur (web) | ✅ token + client web + réception média headless |
+| App TV réception (Tizen) | 🟡 écrite + validée en navigateur ; **non testable sans la TV** |
+| Signalisation d'appel | ✅ service + tests d'intégration |
+| Audio / écho | 🟡 stratégie documentée — voir [docs/ECHO.md](docs/ECHO.md) |
+| Durcissement (watchdog, reconnexion, supervision) | 🟡 en place — voir [supervision/RUNBOOK.md](supervision/RUNBOOK.md) |
 
 ## Documentation
 
 | Document | Contenu |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Chaîne complète C1–C10, schémas (synthétique + Eufy réel) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Chaîne complète, composants C1–C10, schémas |
+| [INSTALL.md](INSTALL.md) | Installation avec vos propres identifiants |
 | [docs/MULTIPARTITE.md](docs/MULTIPARTITE.md) | Appels à plusieurs + écran splitté sur la TV |
-| [docs/PRISE-EN-MAIN-ECRAN.md](docs/PRISE-EN-MAIN-ECRAN.md) | Fond TV (Canal+/IPTV), prise en main de l'écran, limites Tizen |
+| [docs/PRISE-EN-MAIN-ECRAN.md](docs/PRISE-EN-MAIN-ECRAN.md) | Contenu TV de fond, prise en main de l'écran, limites Tizen |
 | [docs/TV-STANDBY-ET-NUMERO.md](docs/TV-STANDBY-ET-NUMERO.md) | Réveil de la TV (SmartThings) + « numéro d'appel » |
-| [docs/ECHO.md](docs/ECHO.md) | Problème d'écho audio (L5) et stratégies O1–O5 |
-| [docs/LATENCE.md](docs/LATENCE.md) | Budget de latence + méthode de mesure P0 |
+| [docs/ECHO.md](docs/ECHO.md) | Problème d'écho audio et stratégies |
+| [docs/LATENCE.md](docs/LATENCE.md) | Budget de latence + méthode de mesure |
 | [docs/PRODUCTION.md](docs/PRODUCTION.md) | Bascule dev local → VM cloud (TLS, TURN, ports) |
 | [FINDINGS.md](FINDINGS.md) | Constats mesurés (RTMP vérifié, WHIP, versions d'images) |
-| [RAPPORT.md](RAPPORT.md) | Rapport de construction + état des phases |
 | [tizen-app/README.md](tizen-app/README.md) | App TV : fond/veille, multipartite, sideload, signature DUID |
-| [eufy-ingest/README.md](eufy-ingest/README.md) | Shim P2P Eufy → go2rtc + instance dédiée |
+| [eufy-ingest/README.md](eufy-ingest/README.md) | Ingestion Eufy : shim P2P → go2rtc + instance dédiée |
 | [supervision/RUNBOOK.md](supervision/RUNBOOK.md) | Exploitation, watchdog, dépannage |
+
+## Production (VM cloud)
+
+Même `docker-compose.yml`, en activant le profil `turn` (coturn), en réglant
+`rtc.use_external_ip: true` et un domaine + TLS, et en régénérant les secrets (`./scripts/gen-keys.sh`).
+Guide complet : [docs/PRODUCTION.md](docs/PRODUCTION.md).
 
 ## Licence
 
 [MIT](LICENSE).
-
-## Production (VM cloud, plus tard)
-
-Même `docker-compose.yml`, en activant le profil `turn` (coturn) et en réglant
-`rtc.use_external_ip: true` + domaine/TLS. Voir [`docs/PRODUCTION.md`](docs/PRODUCTION.md).
