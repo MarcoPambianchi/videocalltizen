@@ -41,6 +41,10 @@ EUFY_WS_PORT = int(os.environ.get("EUFY_WS_PORT", "3010"))
 EUFY_WS_URL = os.environ.get("EUFY_WS_URL") or f"ws://{EUFY_WS_HOST}:{EUFY_WS_PORT}"
 EUFY_CAMERA_SERIAL = os.environ.get("EUFY_CAMERA_SERIAL", "").strip()
 SCHEMA_VERSION = int(os.environ.get("EUFY_SCHEMA_VERSION", "21"))
+# Qualité de streaming à appliquer (1=720P, 2=1080P, 3=2K, 4=4K). 720P -> le flux H.265
+# est petit, donc le transcodage H.265->H.264 (obligatoire pour WebRTC) devient trivial.
+# Vide = ne pas toucher au réglage de la caméra.
+EUFY_STREAM_QUALITY = os.environ.get("EUFY_STREAM_QUALITY", "1").strip()
 
 # Cible go2rtc. En host network, go2rtc ecoute RTSP sur 127.0.0.1:8554 et l'API sur 1984.
 GO2RTC_RTSP_HOST = os.environ.get("GO2RTC_RTSP_HOST", "127.0.0.1")
@@ -123,11 +127,18 @@ class Go2rtcPublisher:
         # -fflags +genpts : le flux H.264 brut n'a pas d'horodatage -> ffmpeg en genere.
         # -c:v copy : passthrough video (zero re-encodage, faible CPU/latence).
         # -rtsp_transport tcp : robuste derriere NAT / pertes (cf go2rtc.yaml).
+        # WebRTC ne supporte PAS le H.265 : on transcode HEVC -> H.264 (léger en 720p).
+        # Si le flux est déjà H.264, passthrough (-c:v copy, zéro CPU).
+        if self.in_fmt == "h264":
+            vcodec = ["-c:v", "copy"]
+        else:
+            vcodec = ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
+                      "-profile:v", "baseline", "-pix_fmt", "yuv420p", "-g", "50", "-bf", "0"]
         args = [
             "ffmpeg", "-hide_banner", "-loglevel", "error",
             "-fflags", "+genpts+discardcorrupt", "-err_detect", "ignore_err",
             "-f", self.in_fmt, "-i", "pipe:0",
-            "-c:v", "copy", "-an",
+            *vcodec, "-an",
             "-rtsp_transport", "tcp", "-f", "rtsp", self.rtsp_url,
         ]
         self.proc = await asyncio.create_subprocess_exec(
@@ -136,7 +147,8 @@ class Go2rtcPublisher:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )
-        log.info("ffmpeg publie %s -> %s", self.in_fmt, self.rtsp_url)
+        mode = "passthrough" if self.in_fmt == "h264" else "transcode->H264"
+        log.info("ffmpeg %s (%s) -> %s", self.in_fmt, mode, self.rtsp_url)
 
     async def write(self, chunk):
         """Ecrit un chunk video sur stdin de ffmpeg. Retourne False si le pipe est casse
@@ -226,6 +238,7 @@ class EufyShim:
         self._frames = 0
         self._bytes = 0
         self._max_gap = 0.0
+        self._orig_quality = None   # qualité streaming d'origine (restaurée à l'arrêt)
 
     # ── Protocole eufy-security-ws ───────────────────────────────────────────
     async def _cmd(self, msg, timeout=30):
@@ -295,6 +308,25 @@ class EufyShim:
         # 'livestream audio data' : ignore ici (audio gere par go2rtc, cf limites README).
 
     # ── Session livestream ───────────────────────────────────────────────────
+    async def _apply_stream_quality(self):
+        """Règle la qualité de streaming caméra (720P par défaut -> transcodage léger).
+        Mémorise la valeur d'origine pour la restaurer à l'arrêt. Best-effort (n'échoue jamais)."""
+        if not EUFY_STREAM_QUALITY:
+            return
+        try:
+            props = await self._cmd({"command": "device.get_properties",
+                                     "serialNumber": EUFY_CAMERA_SERIAL})
+            self._orig_quality = props["result"]["properties"].get("videoStreamingQuality")
+            target = int(EUFY_STREAM_QUALITY)
+            if self._orig_quality != target:
+                await self._cmd({"command": "device.set_property",
+                                 "serialNumber": EUFY_CAMERA_SERIAL,
+                                 "name": "videoStreamingQuality", "value": target})
+                await asyncio.sleep(2)
+                log.info("qualite streaming %s -> %s (transcodage allege)", self._orig_quality, target)
+        except Exception as e:
+            log.warning("reglage qualite streaming ignore : %s", e)
+
     async def _restart_publisher(self):
         log.info("redemarrage du publisher go2rtc")
         if self.publisher is not None:
@@ -318,6 +350,7 @@ class EufyShim:
                 self._reader_task = asyncio.create_task(self._reader())
                 await self._cmd({"command": "set_api_schema", "schemaVersion": SCHEMA_VERSION})
                 await self._cmd({"command": "start_listening"})
+                await self._apply_stream_quality()
 
                 # Le publisher est lancé PARESSEUSEMENT à la 1ère frame (détection codec).
                 self._t_start_ls = time.time()
@@ -344,6 +377,17 @@ class EufyShim:
             except Exception as e:
                 log.warning("stop_livestream : %s", e)
             self._livestreaming = False
+
+        # Restaure la qualité de streaming d'origine (politesse vis-à-vis de l'app Eufy).
+        if self._orig_quality is not None and self.ws is not None:
+            try:
+                await self._cmd({"command": "device.set_property",
+                                 "serialNumber": EUFY_CAMERA_SERIAL,
+                                 "name": "videoStreamingQuality", "value": self._orig_quality},
+                                timeout=10)
+            except Exception:
+                pass
+            self._orig_quality = None
 
         if self._reader_task:
             self._reader_task.cancel()

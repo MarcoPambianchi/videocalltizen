@@ -1,7 +1,8 @@
 # videocalltizen — pilotage de la stack locale (source synthétique).
-.PHONY: up down restart ps logs build test test-p1 test-p2 test-token test-signaling clean eufy-up
+.PHONY: up down restart ps logs build test test-p1 test-p2 test-token test-signaling clean eufy-up eufy-down
 
 CORE := redis livekit ingress go2rtc token-service signaling web-client
+EUFY_FILES := -f docker-compose.yml -f docker-compose.eufy.yml
 
 up:            ## Monte le socle (sans Eufy)
 	docker compose up -d --build $(CORE)
@@ -39,11 +40,16 @@ test-token:
 test-signaling:
 	bash scripts/test-signaling.sh
 
-# Profil 'eufy' — DÉMARRE l'ingestion réelle (touche la vraie caméra, concurrence une autre intégration).
-eufy-up:       ## ⚠️ branche la vraie caméra Eufy (instance dédiée eufy-visio)
-	@echo "⚠️  Ceci ouvre une session sur le compte Eufy réel et peut entrer en"
-	@echo "    concurrence avec une autre intégration pour l'unique slot P2P de la S350."
-	docker compose --profile eufy up -d eufy-visio eufy-shim
+# Profil 'eufy' — DÉMARRE l'ingestion réelle (touche la vraie caméra). go2rtc passe
+# en mode RÉEL (source 'salon' = caméra, transcode H.265->H.264) via l'override.
+eufy-up:       ## ⚠️ branche la vraie caméra Eufy (instance dédiée eufy-visio + transcode)
+	@echo "⚠️  Ouvre une session sur le compte Eufy réel et fait streamer la caméra."
+	docker compose $(EUFY_FILES) --profile eufy up -d --build go2rtc eufy-visio eufy-shim
+	@echo "→ go2rtc en mode RÉEL. Suivre le shim : make logs S=eufy-shim"
+
+eufy-down:     ## Arrête l'Eufy et remet go2rtc en mode synthétique
+	docker compose $(EUFY_FILES) --profile eufy stop eufy-shim eufy-visio
+	docker compose up -d go2rtc
 
 clean:
 	docker compose down -v --remove-orphans

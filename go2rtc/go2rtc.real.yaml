@@ -1,0 +1,26 @@
+# go2rtc — MODE RÉEL (caméra Eufy). À la place de la mire synthétique, la source
+# 'salon' est PUBLIÉE par le shim Eufy (eufy-ingest) via RTSP, déjà transcodée en
+# H.264 720p (depuis le H.265 de la caméra). go2rtc se contente de relayer.
+#
+# Activé par docker-compose.eufy.yml (override) — voir `make eufy-up`.
+
+streams:
+  # Aucune source configurée : le shim publie en RTSP (rtsp://127.0.0.1:8554/salon)
+  # -> go2rtc crée le producteur 'salon' dynamiquement.
+  salon:
+
+api:
+  listen: ":1984"
+  origin: "*"
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  listen: ":8555"
+  candidates:
+    - 127.0.0.1:8555
+
+log:
+  level: info
+  format: text

@@ -1,0 +1,10 @@
+# Override MODE RÉEL Eufy : à utiliser avec le profil 'eufy'.
+#   docker compose -f docker-compose.yml -f docker-compose.eufy.yml --profile eufy up -d
+# (ou `make eufy-up`)
+#
+# Remplace la config go2rtc synthétique par la config RÉELLE (source 'salon'
+# publiée par le shim Eufy, plus de mire synthétique).
+services:
+  go2rtc:
+    volumes:
+      - ./go2rtc/go2rtc.real.yaml:/config/go2rtc.yaml:ro
